@@ -1,0 +1,16 @@
+# Web Framework
+streamlit>=1.28.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+
+# Cheminformatics
+rdkit>=2023.3.1
+
+# Visualization
+plotly>=5.15.0
+
+# Additional utilities (if needed by Streamlit Cloud)
+Pillow>=9.5.0
