@@ -20,7 +20,7 @@ st.markdown("Calculate various chemical properties from molecular structures")
 
 # Developer signature
 st.markdown("---")
-st.markdown("**Developed by:** Yashwanth Reddy for ITR-UIC | **Part of:** Chemo-Informatics Toolkit as part of Dr. Guido Pauli's Team")
+st.markdown("**Developed by:** Yashwanth Reddy for ITR-UIC | **Part of:** Chemo-Informatics Toolkit")
 st.markdown("---")
 
 # Settings
