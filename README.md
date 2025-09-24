@@ -9,7 +9,7 @@ A comprehensive Streamlit web application for calculating chemical and molecular
 ### 📝 Input Formats
 - **SMILES** (Simplified Molecular Input Line Entry System)
 - **InChI** (International Chemical Identifier)
-- **InChI Key** (Hashed InChI - limited conversion support)
+- **InChI Key** (Automatic online database conversion via NIH CIR & PubChem)
 
 ### 📊 File Support
 - **CSV** files
@@ -245,15 +245,56 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Plotly** - Interactive visualizations
 - **Pandas** - Data manipulation and analysis
 
+## 🔗 API Integration & Verification
+
+### InChI Key Conversion APIs
+
+The application integrates with two reliable database services for InChI Key conversion:
+
+#### **Primary: NIH Chemical Identifier Resolver (CIR)**
+- **URL**: `https://cactus.nci.nih.gov/chemical/structure/{inchi_key}/smiles`
+- **Status**: ✅ **Verified Working**
+- **Response Time**: ~1-3 seconds
+- **Coverage**: Comprehensive small molecule database
+
+#### **Fallback: PubChem API**
+- **URL**: `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchi_key}/property/IsomericSMILES/JSON`
+- **Status**: ✅ **Verified Working**
+- **Response Time**: ~2-5 seconds
+- **Coverage**: Extensive chemical database with 100M+ compounds
+
+### API Testing & Verification
+
+Run comprehensive API tests:
+```bash
+python test_api_verification.py
+```
+
+This verifies:
+- ✅ Both API endpoints are responsive
+- ✅ InChI Key resolution accuracy
+- ✅ Network timeout handling
+- ✅ Error resilience
+- ✅ Integration with molecular property calculations
+
+### Network Requirements
+- **Internet connection** required for InChI Key conversion
+- **Fallback mechanism** ensures reliability
+- **User control** - can be disabled in Settings for offline use
+- **Default enabled** for convenience
+
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/YOUR_USERNAME/molecular-properties-calculator/issues)
 - **Documentation**: See the in-app "Information & Property Explanations" section
-- **Examples**: Check the `examples/` folder for sample files
+- **API Status**: Run `python test_api_verification.py` to verify online services
 
 ---
 
-**Made with ❤️ for the cheminformatics community**
+**Made for the cheminformatics community**
+
+**Developed by:** Yashwanth Reddy for ITR-UIC
+**Part of:** Chemo-Informatics Toolkit as part of Dr. Guido Pauli's Team
 
 ---
 

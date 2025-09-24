@@ -12,5 +12,8 @@ rdkit>=2023.3.1
 # Visualization
 plotly>=5.15.0
 
+# HTTP requests for online database lookups
+requests>=2.28.0
+
 # Additional utilities (if needed by Streamlit Cloud)
 Pillow>=9.5.0
