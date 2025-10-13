@@ -415,12 +415,27 @@ elif input_mode == "Batch Processing":
             st.session_state.batch_selected_properties = set()
 
         # Calculate All checkbox for batch
+        # Track previous state to detect when user unchecks "Calculate All"
+        if 'prev_calc_all_batch' not in st.session_state:
+            st.session_state.prev_calc_all_batch = False
+
         calc_all_batch = st.checkbox("Calculate All Properties (Batch)", value=False)
 
         if calc_all_batch:
+            # Select all properties when checked
             st.session_state.batch_selected_properties = set()
             for props in property_groups_batch.values():
                 st.session_state.batch_selected_properties.update(props)
+            # Update tracking flag
+            st.session_state.prev_calc_all_batch = True
+        else:
+            # If previously was "calc all" and now unchecked, clear all selections
+            if st.session_state.prev_calc_all_batch and not calc_all_batch:
+                # User just unchecked "Calculate All" - clear selections
+                st.session_state.batch_selected_properties = set()
+
+            # Update the previous state
+            st.session_state.prev_calc_all_batch = False
 
         if not calc_all_batch:
             # Create expandable sections for batch processing
