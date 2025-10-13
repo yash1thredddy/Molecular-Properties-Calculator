@@ -486,7 +486,7 @@ elif input_mode == "Batch Processing":
         if st.session_state.get('mapping_applied', False):
             st.markdown("---")
             st.subheader("⚗️ Ligand Efficiency Indices (LEI)")
-            st.markdown("*Based on AtlasCBS methodology - requires pKi column*")
+            st.markdown("*Based on AtlasCBS methodology (Cele Abad-Zapatero, A. Cortes-Cabrera 2013) - requires pKi column*")
 
             # Check if pKi column exists (use manual mapping if available)
             if 'pki' in st.session_state.column_mappings:
