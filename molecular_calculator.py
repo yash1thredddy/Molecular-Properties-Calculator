@@ -18,6 +18,14 @@ import requests
 import time
 from typing import Dict, Any, Optional, Union
 
+# Import Ligand Efficiency functionality
+from ligand_efficiency import (
+    DependencyChecker,
+    LigandEfficiencyCalculator,
+    get_lei_property_group,
+    get_lei_descriptions
+)
+
 
 class MolecularCalculator:
     """Main class for molecular property calculations"""
@@ -263,14 +271,17 @@ class MolecularCalculator:
             return 'smiles'
 
     @staticmethod
-    def get_property_groups() -> Dict[str, list]:
+    def get_property_groups(include_lei: bool = False) -> Dict[str, list]:
         """
         Get organized property groups for UI display
+
+        Args:
+            include_lei: Include Ligand Efficiency Indices (requires pKi)
 
         Returns:
             Dictionary with property groups and their properties
         """
-        return {
+        groups = {
             "Basic Properties": ['Molecular_Weight', 'Heavy_Atom_Count', 'Atom_Count', 'Bond_Count', 'Formal_Charge'],
             "Lipinski Properties": ['LogP', 'HB_Donors', 'HB_Acceptors', 'TPSA', 'Rotatable_Bonds'],
             "Drug-likeness": ['QED'],
@@ -279,6 +290,13 @@ class MolecularCalculator:
             "Complexity": ['BertzCT', 'Chi0', 'Chi1'],
             "Additional": ['CrippenLogP', 'CrippenMR', 'LabuteASA']
         }
+
+        # Add LEI properties if requested
+        if include_lei:
+            lei_group = get_lei_property_group()
+            groups.update(lei_group)
+
+        return groups
 
     @classmethod
     def process_batch(cls, df: pd.DataFrame, smiles_col: str, selected_properties: set = None) -> pd.DataFrame:
@@ -397,6 +415,28 @@ class PropertyExplanations:
         - **PubChem API** fallback for redundancy
         - Can be disabled in Settings for privacy/offline use
         - Requires internet connection for database lookup
+
+        ### Ligand Efficiency Indices (LEI) - Requires pKi Values
+        Based on AtlasCBS methodology (Cele Abad-Zapatero, A. Cortes-Cabrera 2013)
+
+        #### Available LEIs:
+        - **NSEI**: Normalized Surface Efficiency Index (pKi / Polar Atoms)
+        - **NBEI**: Normalized Binding Efficiency Index (pKi / Heavy Atoms)
+        - **BEI**: Binding Efficiency Index (pKi / (MW/1000))
+        - **SEI**: Surface Efficiency Index (pKi / (TPSA/100))
+        - **nBEI**: Alternative Binding Efficiency Index (-log10(Ki / Heavy Atoms))
+        - **mBEI**: Molecular Binding Efficiency Index (-log10(Ki / MW))
+        - **LEH**: Ligand Efficiency Hopkins (-ΔG / Heavy Atoms) [Hopkins et al. DDT, 2004]
+        - **LEP**: Ligand Efficiency Polar (-ΔG / Polar Atoms)
+
+        #### LEI Requirements:
+        - **pKi column required** in uploaded file
+        - Optional columns (will be calculated from SMILES if missing):
+          - MW (Molecular Weight)
+          - TPSA (Topological Polar Surface Area)
+          - Heavy_Atom_Count
+        - System automatically detects available columns
+        - Only calculates missing values from SMILES when needed
 
         ### Development Information
         Developed by: **Yashwanth Reddy** for **ITR-UIC**

@@ -8,6 +8,13 @@ from molecular_calculator import MolecularCalculator, PropertyExplanations
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
+# Import Ligand Efficiency functionality
+from ligand_efficiency import (
+    DependencyChecker,
+    LigandEfficiencyCalculator,
+    get_lei_descriptions
+)
+
 
 # Streamlit App
 st.set_page_config(
@@ -242,15 +249,160 @@ elif input_mode == "Batch Processing":
         if converted_columns_batch:
             st.info(f"✅ Auto-converted {len(converted_columns_batch)} columns to numeric: {', '.join(converted_columns_batch)}")
 
+        # Clear previous results when new file is uploaded (DO THIS FIRST!)
+        if 'current_batch_file' not in st.session_state:
+            st.session_state.current_batch_file = None
+
+        # Check if this is a new file
+        if st.session_state.current_batch_file != uploaded_file.name:
+            # New file detected - clear all previous selections
+            st.session_state.current_batch_file = uploaded_file.name
+            st.session_state.batch_results_df = None
+            st.session_state.batch_final_df = None
+            st.session_state.batch_selected_properties = set()  # Clear property selections
+            st.session_state.batch_selected_leis = set()  # Clear LEI selections
+            st.session_state.column_mappings = {}  # Clear column mappings
+            st.session_state.mapping_applied = False  # Reset mapping status
+            st.session_state.file_just_changed = True  # Flag to trigger rerun
+
+        # If file just changed, show message and trigger rerun immediately
+        if st.session_state.get('file_just_changed', False):
+            st.session_state.file_just_changed = False  # Reset flag
+            st.info("🔄 New file detected - clearing previous selections...")
+            st.rerun()
+
         st.subheader("Data Preview")
         st.info(f"Loaded {len(df)} rows from {uploaded_file.name}")
         st.dataframe(df.head(), use_container_width=True)
 
-        if smiles_col:
-            st.success(f"Detected SMILES column: '{smiles_col}'")
+        # ==================== COLUMN MAPPING SECTION ====================
+        st.markdown("---")
+        st.subheader("🔗 Column Mapping")
+
+        # Initialize column mapping state
+        if 'column_mappings' not in st.session_state:
+            st.session_state.column_mappings = {}
+
+        # Check for manual mapping toggle
+        show_manual_mapping = st.checkbox(
+            "📝 Manually map columns to standard names",
+            value=False,
+            help="Use this if your columns have non-standard names (e.g., 'molecular' instead of 'SMILES', 'MICMtb(μM)' instead of 'pKi')"
+        )
+
+        if show_manual_mapping:
+            with st.expander("🗺️ Column Mapping Configuration", expanded=True):
+                st.markdown("**Map your file columns to standard property names:**")
+
+                # Create mapping UI
+                map_col1, map_col2 = st.columns(2)
+
+                with map_col1:
+                    st.markdown("**Essential Columns:**")
+
+                    # SMILES mapping
+                    smiles_mapping = st.selectbox(
+                        "SMILES column:",
+                        options=['[Not mapped]'] + list(df.columns),
+                        index=list(df.columns).index(smiles_col) + 1 if smiles_col else 0,
+                        key="map_smiles",
+                        help="Select the column containing molecular structures (SMILES/InChI)"
+                    )
+                    if smiles_mapping != '[Not mapped]':
+                        st.session_state.column_mappings['smiles'] = smiles_mapping
+                        smiles_col = smiles_mapping  # Update smiles_col
+                    else:
+                        smiles_col = None
+
+                    # pKi mapping
+                    pki_detected_auto = DependencyChecker.detect_column(df, 'pki')
+                    pki_mapping = st.selectbox(
+                        "pKi column:",
+                        options=['[Not mapped]'] + list(df.columns),
+                        index=list(df.columns).index(pki_detected_auto) + 1 if pki_detected_auto else 0,
+                        key="map_pki",
+                        help="Select the column containing pKi values (required for LEI calculations)"
+                    )
+                    if pki_mapping != '[Not mapped]':
+                        st.session_state.column_mappings['pki'] = pki_mapping
+
+                with map_col2:
+                    st.markdown("**Optional Property Columns:**")
+                    st.markdown("*These will be calculated from SMILES if not mapped*")
+
+                    # MW mapping
+                    mw_detected_auto = DependencyChecker.detect_column(df, 'mw')
+                    mw_mapping = st.selectbox(
+                        "Molecular Weight (MW):",
+                        options=['[Not mapped]'] + list(df.columns),
+                        index=list(df.columns).index(mw_detected_auto) + 1 if mw_detected_auto else 0,
+                        key="map_mw"
+                    )
+                    if mw_mapping != '[Not mapped]':
+                        st.session_state.column_mappings['mw'] = mw_mapping
+
+                    # TPSA mapping
+                    tpsa_detected_auto = DependencyChecker.detect_column(df, 'tpsa')
+                    tpsa_mapping = st.selectbox(
+                        "TPSA:",
+                        options=['[Not mapped]'] + list(df.columns),
+                        index=list(df.columns).index(tpsa_detected_auto) + 1 if tpsa_detected_auto else 0,
+                        key="map_tpsa"
+                    )
+                    if tpsa_mapping != '[Not mapped]':
+                        st.session_state.column_mappings['tpsa'] = tpsa_mapping
+
+                    # Heavy Atoms mapping
+                    heavy_detected_auto = DependencyChecker.detect_column(df, 'heavy_atoms')
+                    heavy_mapping = st.selectbox(
+                        "Heavy Atom Count:",
+                        options=['[Not mapped]'] + list(df.columns),
+                        index=list(df.columns).index(heavy_detected_auto) + 1 if heavy_detected_auto else 0,
+                        key="map_heavy"
+                    )
+                    if heavy_mapping != '[Not mapped]':
+                        st.session_state.column_mappings['heavy_atoms'] = heavy_mapping
+
+                # Show current mappings
+                if st.session_state.column_mappings:
+                    st.success("✅ **Current Mappings:**")
+                    for std_name, col_name in st.session_state.column_mappings.items():
+                        st.write(f"  • `{col_name}` → **{std_name.upper()}**")
+
+                # Apply Mapping Button
+                st.markdown("---")
+                if st.button("✅ Apply Mapping", type="primary", key="apply_mapping_btn"):
+                    st.session_state.mapping_applied = True
+                    st.success("🎉 Column mapping applied! You can now proceed with property and LEI selection.")
+                    st.rerun()
+
+            # Initialize mapping_applied state
+            if 'mapping_applied' not in st.session_state:
+                st.session_state.mapping_applied = False
+
+            # Show status if mapping not applied yet
+            if show_manual_mapping and not st.session_state.mapping_applied:
+                st.warning("⚠️ Please click 'Apply Mapping' button to confirm your column mappings before proceeding.")
         else:
-            st.warning("Could not detect SMILES column automatically")
-            smiles_col = st.selectbox("Select SMILES column:", df.columns)
+            # Auto-detect SMILES column (no manual mapping)
+            st.session_state.mapping_applied = True  # Auto-detection is instant
+            if smiles_col:
+                st.success(f"✅ Auto-detected SMILES column: '{smiles_col}'")
+            else:
+                st.warning("⚠️ Could not detect SMILES column automatically")
+                st.info("💡 Please select your SMILES/InChI/InChIKey column from the dropdown, or use 'Manually map columns' option above")
+                selected_smiles = st.selectbox(
+                    "Select SMILES column:",
+                    options=['[Not selected]'] + list(df.columns),
+                    key="manual_smiles_select",
+                    help="Choose the column containing molecular structures (SMILES/InChI/InChIKey)"
+                )
+                if selected_smiles != '[Not selected]':
+                    smiles_col = selected_smiles
+                    st.success(f"✅ Selected SMILES column: '{smiles_col}'")
+                else:
+                    smiles_col = None
+        # ==================== END COLUMN MAPPING SECTION ====================
 
         # Property selection for batch
         st.subheader("Select Properties to Calculate")
@@ -310,30 +462,202 @@ elif input_mode == "Batch Processing":
             total_props = sum(len(props) for props in property_groups_batch.values())
             st.info(f"All properties selected: {total_props}")
 
+        # ==================== LEI CALCULATIONS SECTION ====================
+        # Initialize LEI session state FIRST (before anything else)
+        if 'batch_selected_leis' not in st.session_state:
+            st.session_state.batch_selected_leis = set()
+
+        # Only show LEI section if mapping is applied
+        if st.session_state.get('mapping_applied', False):
+            st.markdown("---")
+            st.subheader("⚗️ Ligand Efficiency Indices (LEI)")
+            st.markdown("*Based on AtlasCBS methodology - requires pKi column*")
+
+            # Check if pKi column exists (use manual mapping if available)
+            if 'pki' in st.session_state.column_mappings:
+                pki_detected = st.session_state.column_mappings['pki']
+            else:
+                pki_detected = DependencyChecker.detect_column(df, 'pki')
+
+            if pki_detected:
+                st.success(f"✅ pKi column detected: '{pki_detected}'")
+
+                # Override detected_cols with manual mappings if they exist
+                detected_cols = DependencyChecker.detect_all_columns(df)
+                # Use manual mappings to override auto-detection
+                for std_name, col_name in st.session_state.column_mappings.items():
+                    detected_cols[std_name] = col_name
+
+                # Check if both SMILES and pKi are available (required for LEI calculations)
+                has_smiles = detected_cols.get('smiles') is not None
+                has_pki = pki_detected is not None
+                can_calculate_all_leis = has_smiles and has_pki
+
+                # Show detected columns status
+                with st.expander("📊 Column Detection Status", expanded=True):
+                    col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("**Available Columns:**")
+                    for dep_name, col_name in detected_cols.items():
+                        if col_name:
+                            st.write(f"✓ {dep_name.upper()}: `{col_name}`")
+
+                with col2:
+                    st.markdown("**Missing Columns:**")
+                    missing = [dep for dep, col in detected_cols.items() if col is None]
+                    if missing:
+                        for dep in missing:
+                            if dep == 'smiles':
+                                st.write(f"✗ {dep.upper()} (required for calculating missing properties)")
+                            else:
+                                st.write(f"✗ {dep.upper()}")
+                    else:
+                        st.write("All standard columns detected!")
+
+                # LEI property selection
+                st.markdown("**Select LEI Properties to Calculate:**")
+
+                lei_descriptions = get_lei_descriptions()
+                all_leis = list(lei_descriptions.keys())
+
+                # Check which LEIs can be calculated (pass manual mappings)
+                lei_check = DependencyChecker.check_lei_dependencies(
+                    df, all_leis, manual_mappings=st.session_state.column_mappings
+                )
+
+                # If both SMILES and pKi are available, all LEIs can be calculated
+                if can_calculate_all_leis:
+                    # Enable all LEIs since we have SMILES (to calculate missing properties) and pKi
+                    can_calculate_leis = set(all_leis)
+                    st.info("✨ SMILES and pKi detected - all LEIs enabled (missing properties will be calculated from SMILES)")
+                else:
+                    # Use normal dependency checking
+                    can_calculate_leis = set(lei_check.get('can_calculate', []))
+
+                # Create three columns for LEI selection
+                lei_col1, lei_col2, lei_col3 = st.columns(3)
+
+                for idx, lei in enumerate(all_leis):
+                    col = [lei_col1, lei_col2, lei_col3][idx % 3]
+
+                    with col:
+                        # Check if this LEI can be calculated
+                        can_calculate = lei in can_calculate_leis
+                        status_icon = "✅" if can_calculate else "⚠️"
+
+                    lei_selected = lei in st.session_state.batch_selected_leis
+                    checkbox_label = f"{status_icon} {lei}"
+
+                    if st.checkbox(checkbox_label, value=lei_selected, key=f"lei_{lei}",
+                                 help=lei_descriptions[lei], disabled=not can_calculate):
+                        st.session_state.batch_selected_leis.add(lei)
+
+                        # Auto-select required molecular properties for this LEI
+                        if lei in lei_check['status_by_lei']:
+                            needs_calc = lei_check['status_by_lei'][lei].get('needs_calc', [])
+
+                            # Auto-select MW, TPSA, Heavy_Atom_Count if needed and not present in file
+                            for dep in needs_calc:
+                                if dep == 'heavy_atoms' and 'Heavy_Atom_Count' not in [detected_cols.get('heavy_atoms')]:
+                                    st.session_state.batch_selected_properties.add('Heavy_Atom_Count')
+                                elif dep == 'mw' and detected_cols.get('mw') is None:
+                                    st.session_state.batch_selected_properties.add('Molecular_Weight')
+                                elif dep == 'tpsa' and detected_cols.get('tpsa') is None:
+                                    st.session_state.batch_selected_properties.add('TPSA')
+                    else:
+                        st.session_state.batch_selected_leis.discard(lei)
+
+                # Show what will be calculated
+                if st.session_state.batch_selected_leis:
+                    selected_lei_check = DependencyChecker.check_lei_dependencies(
+                        df, list(st.session_state.batch_selected_leis),
+                        manual_mappings=st.session_state.column_mappings
+                    )
+
+                    # Check if any properties were auto-selected
+                    auto_selected = []
+                    needs_calc = selected_lei_check.get('needs_calculation', [])
+                    if 'heavy_atoms' in needs_calc or 'polar_atoms' in needs_calc:
+                        if 'Heavy_Atom_Count' in st.session_state.batch_selected_properties:
+                            auto_selected.append('Heavy_Atom_Count')
+                    if 'mw' in needs_calc and detected_cols.get('mw') is None:
+                        if 'Molecular_Weight' in st.session_state.batch_selected_properties:
+                            auto_selected.append('Molecular_Weight')
+                    if 'tpsa' in needs_calc and detected_cols.get('tpsa') is None:
+                        if 'TPSA' in st.session_state.batch_selected_properties:
+                            auto_selected.append('TPSA')
+
+                    if auto_selected:
+                        st.success(f"✨ Auto-selected required properties: {', '.join(auto_selected)}")
+
+                    with st.expander("ℹ️ Calculation Plan", expanded=False):
+                        status_msg = DependencyChecker.generate_status_message(selected_lei_check)
+                        st.markdown(status_msg)
+
+                    st.info(f"📋 Selected LEIs: {len(st.session_state.batch_selected_leis)}")
+
+            else:
+                st.info("ℹ️ **No pKi column detected** - LEI calculations require a pKi column")
+                st.markdown("**Supported pKi column names:**")
+                st.code("pKi, pki, PKI, pIC50, pic50, p_Ki, p_ki")
+                st.markdown("Upload a file with a pKi column to enable LEI calculations.")
+        # ==================== END LEI SECTION ====================
+
         # Initialize batch results session state
         if 'batch_results_df' not in st.session_state:
             st.session_state.batch_results_df = None
         if 'batch_final_df' not in st.session_state:
             st.session_state.batch_final_df = None
 
-        # Clear previous results when new file is uploaded
-        if 'current_batch_file' not in st.session_state:
-            st.session_state.current_batch_file = None
+        # ==================== VALIDATION BEFORE PROCESSING ====================
+        st.markdown("---")
+        st.subheader("🚀 Ready to Process?")
 
-        if st.session_state.current_batch_file != uploaded_file.name:
-            st.session_state.current_batch_file = uploaded_file.name
-            st.session_state.batch_results_df = None
-            st.session_state.batch_final_df = None
-            st.session_state.batch_selected_properties = set()  # Clear property selections too
+        # Check if SMILES column is detected
+        if smiles_col:
+            st.success(f"✅ **Molecular structure column detected:** `{smiles_col}`")
+        else:
+            st.error("❌ **No molecular structure column detected**")
+            st.warning("⚠️ **Cannot proceed without SMILES, InChI, or InChIKey column**")
+            st.info("💡 **How to fix this:**\n" +
+                   "- Make sure your file has a column with molecular structures (SMILES/InChI/InChIKey)\n" +
+                   "- Supported column names: `SMILES`, `smiles`, `InChI`, `inchi`, `InChIKey`, `inchikey`\n" +
+                   "- OR use 'Manually map columns' option above to map your custom column name")
 
-        if st.button("Process Batch", type="primary"):
-            if smiles_col and (calc_all_batch or st.session_state.batch_selected_properties):
+        # Check if any properties or LEIs are selected
+        has_selections = calc_all_batch or st.session_state.batch_selected_properties or st.session_state.batch_selected_leis
+        if not has_selections and smiles_col:
+            st.warning("⚠️ **No properties or LEIs selected** - Please select at least one property or LEI to calculate")
+        elif has_selections and smiles_col:
+            selection_count = 0
+            if calc_all_batch:
+                selection_count = sum(len(props) for props in property_groups_batch.values())
+                st.info(f"📊 **Ready to calculate:** All properties ({selection_count} total)")
+            else:
+                if st.session_state.batch_selected_properties:
+                    selection_count += len(st.session_state.batch_selected_properties)
+                if st.session_state.batch_selected_leis:
+                    selection_count += len(st.session_state.batch_selected_leis)
+                items = []
+                if st.session_state.batch_selected_properties:
+                    items.append(f"{len(st.session_state.batch_selected_properties)} properties")
+                if st.session_state.batch_selected_leis:
+                    items.append(f"{len(st.session_state.batch_selected_leis)} LEIs")
+                st.info(f"📊 **Ready to calculate:** {' + '.join(items)}")
+
+        # Show the Process Batch button with appropriate state
+        can_process = smiles_col and has_selections
+
+        if st.button("Process Batch", type="primary", disabled=not can_process):
+            if smiles_col and (calc_all_batch or st.session_state.batch_selected_properties or st.session_state.batch_selected_leis):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
                 results = []
                 total_rows = len(df)
 
+                # Calculate regular molecular properties
                 for idx, row in df.iterrows():
                     smiles = row[smiles_col]
 
@@ -352,20 +676,40 @@ elif input_mode == "Batch Processing":
 
                     # Update progress
                     progress = (idx + 1) / total_rows
-                    progress_bar.progress(progress)
-                    status_text.text(f"Processing: {idx + 1}/{total_rows}")
+                    progress_bar.progress(progress * 0.7)  # First 70% for regular properties
+                    status_text.text(f"Calculating properties: {idx + 1}/{total_rows}")
 
-                # Create results DataFrame and store in session state
+                # Create results DataFrame
                 results_df = pd.DataFrame(results)
                 final_df = pd.concat([df, results_df], axis=1)
+
+                # Calculate LEIs if selected
+                if st.session_state.batch_selected_leis:
+                    status_text.text("Calculating Ligand Efficiency Indices...")
+                    progress_bar.progress(0.75)
+
+                    lei_result_df, lei_status = LigandEfficiencyCalculator.process_batch(
+                        df=final_df,
+                        selected_leis=list(st.session_state.batch_selected_leis),
+                        show_errors=False,
+                        manual_mappings=st.session_state.get('column_mappings', {})
+                    )
+
+                    if lei_status['success']:
+                        final_df = lei_result_df
+                        status_text.text(f"LEI calculation complete! Calculated: {', '.join(lei_status['calculated_leis'])}")
+                    else:
+                        st.warning(f"⚠️ LEI calculation issue: {lei_status.get('message', 'Unknown error')}")
+
+                progress_bar.progress(1.0)
 
                 # Store results in session state
                 st.session_state.batch_results_df = results_df
                 st.session_state.batch_final_df = final_df
 
-                status_text.text("Processing complete!")
+                status_text.text("✅ Processing complete!")
             else:
-                st.error("Please select a SMILES column and at least one property.")
+                st.error("Please select a SMILES column and at least one property or LEI.")
 
         # Show helpful message when no processing has been done yet
         if (st.session_state.batch_results_df is None and smiles_col and
@@ -445,7 +789,8 @@ elif input_mode == "Batch Processing":
                             st.plotly_chart(fig, use_container_width=True)
 
                 # Enhanced Interactive Visualization System
-                numeric_cols = st.session_state.batch_results_df.select_dtypes(include=[np.number]).columns.tolist()
+                # Include ALL numeric columns from final_df (original + calculated)
+                numeric_cols = st.session_state.batch_final_df.select_dtypes(include=[np.number]).columns.tolist()
                 all_cols = st.session_state.batch_final_df.columns.tolist()
 
                 if len(numeric_cols) >= 1:
