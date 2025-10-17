@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from io import StringIO
-from molecular_calculator import MolecularCalculator, PropertyExplanations
+from molecular_calculator import MolecularCalculator, PropertyExplanations, ThreeDOLSRegression
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
@@ -41,7 +41,7 @@ MolecularCalculator.suppress_rdkit_warnings(suppress_warnings)
 
 # Sidebar for input options
 st.sidebar.header("Input Options")
-input_mode = st.sidebar.radio("Select input mode:", ["Single Molecule", "Batch Processing", "Data Visualization"])
+input_mode = st.sidebar.radio("Select input mode:", ["Single Molecule", "Batch Processing", "Data Visualization", "3D Regression Analysis"])
 
 if input_mode == "Single Molecule":
     st.header("Single Molecule Analysis")
@@ -814,6 +814,7 @@ elif input_mode == "Batch Processing":
                     # Chart type selection
                     chart_types = {
                         'Scatter Plot': {'requires': ['x', 'y'], 'desc': 'Compare two numeric variables'},
+                        '3D OLS Regression': {'requires': ['x', 'y', 'z'], 'desc': 'Fit 3D plane: Z = b0 + b1·X + b2·Y'},
                         'Histogram': {'requires': ['x'], 'desc': 'Distribution of a single variable'},
                         'Box Plot': {'requires': ['y'], 'desc': 'Statistical summary with quartiles'},
                         'Violin Plot': {'requires': ['y'], 'desc': 'Distribution shape with density'},
@@ -838,7 +839,7 @@ elif input_mode == "Batch Processing":
                     input_cols = st.columns(4)
 
                     # Initialize variables
-                    x_axis, y_axis, color_col, size_col = None, None, None, None
+                    x_axis, y_axis, z_axis, color_col, size_col = None, None, None, None, None
 
                     with input_cols[0]:
                         if 'x' in requires:
@@ -865,6 +866,19 @@ elif input_mode == "Batch Processing":
                                 index=numeric_cols.index('QED') if 'QED' in numeric_cols else 0,
                                 key="viz_single_var"
                             )
+
+                    # Z-axis for 3D OLS Regression
+                    if 'z' in requires:
+                        available_z = [col for col in numeric_cols if col != x_axis and col != y_axis]
+                        if available_z:
+                            z_axis = st.selectbox(
+                                "📊 Z-axis (dependent):",
+                                options=available_z,
+                                index=available_z.index('TPSA') if 'TPSA' in available_z else 0,
+                                key="viz_z_axis"
+                            )
+                        else:
+                            st.warning("Need at least 3 numeric columns for 3D regression")
 
                     with input_cols[2]:
                         # Color mapping options
@@ -1075,6 +1089,129 @@ elif input_mode == "Batch Processing":
                                     **color_param
                                 )
 
+                            elif selected_chart == '3D OLS Regression' and x_axis and y_axis and z_axis:
+                                # Perform 3D OLS Regression
+                                try:
+                                    # Create OLS regression model
+                                    ols_model = ThreeDOLSRegression(
+                                        x=plot_data[x_axis],
+                                        y=plot_data[y_axis],
+                                        z=plot_data[z_axis]
+                                    )
+
+                                    # Get statistics
+                                    stats = ols_model.get_statistics()
+                                    equation = ols_model.get_equation_string(decimals=3)
+
+                                    # Get plane mesh for visualization
+                                    X_mesh, Y_mesh, Z_mesh = ols_model.get_plane_mesh(num_points=20)
+
+                                    # Create 3D scatter plot
+                                    fig = go.Figure()
+
+                                    # Add data points
+                                    if color_col and color_col in numeric_cols:
+                                        # Color by a variable
+                                        fig.add_trace(go.Scatter3d(
+                                            x=ols_model.x,
+                                            y=ols_model.y,
+                                            z=ols_model.z,
+                                            mode='markers',
+                                            marker=dict(
+                                                size=5,
+                                                color=plot_data.loc[plot_data.index.isin(plot_data.index), color_col],
+                                                colorscale=color_scale,
+                                                showscale=True,
+                                                colorbar=dict(title=color_col.replace('_', ' '))
+                                            ),
+                                            name='Data Points',
+                                            text=[f"{x_axis}: {x:.2f}<br>{y_axis}: {y:.2f}<br>{z_axis}: {z:.2f}"
+                                                  for x, y, z in zip(ols_model.x, ols_model.y, ols_model.z)],
+                                            hovertemplate='%{text}<extra></extra>'
+                                        ))
+                                    else:
+                                        # Uniform color, can color by residuals
+                                        residuals_abs = np.abs(ols_model.residuals)
+                                        fig.add_trace(go.Scatter3d(
+                                            x=ols_model.x,
+                                            y=ols_model.y,
+                                            z=ols_model.z,
+                                            mode='markers',
+                                            marker=dict(
+                                                size=5,
+                                                color=residuals_abs,
+                                                colorscale='Reds',
+                                                showscale=True,
+                                                colorbar=dict(title='|Residual|')
+                                            ),
+                                            name='Data Points',
+                                            text=[f"{x_axis}: {x:.2f}<br>{y_axis}: {y:.2f}<br>{z_axis}: {z:.2f}<br>Residual: {r:.3f}"
+                                                  for x, y, z, r in zip(ols_model.x, ols_model.y, ols_model.z, ols_model.residuals)],
+                                            hovertemplate='%{text}<extra></extra>'
+                                        ))
+
+                                    # Add fitted plane
+                                    fig.add_trace(go.Surface(
+                                        x=X_mesh,
+                                        y=Y_mesh,
+                                        z=Z_mesh,
+                                        opacity=0.6,
+                                        colorscale='Blues',
+                                        showscale=False,
+                                        name='Fitted Plane',
+                                        hovertemplate='Fitted Plane<extra></extra>'
+                                    ))
+
+                                    # Update layout for 3D plot
+                                    fig.update_layout(
+                                        title=f"3D OLS Regression: {z_axis} vs {x_axis} and {y_axis}",
+                                        scene=dict(
+                                            xaxis_title=x_axis.replace('_', ' '),
+                                            yaxis_title=y_axis.replace('_', ' '),
+                                            zaxis_title=z_axis.replace('_', ' '),
+                                            camera=dict(
+                                                eye=dict(x=1.5, y=1.5, z=1.3)
+                                            )
+                                        ),
+                                        height=700,
+                                        showlegend=True
+                                    )
+
+                                    # Display the figure
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                                    # Display regression statistics
+                                    st.markdown("### 📊 3D OLS Regression Statistics")
+                                    col1, col2, col3, col4, col5 = st.columns(5)
+                                    with col1:
+                                        st.metric("R² (Coefficient of Determination)", f"{stats['R²']:.4f}")
+                                    with col2:
+                                        st.metric("RMSE", f"{stats['RMSE']:.4f}")
+                                    with col3:
+                                        st.metric("Intercept (b₀)", f"{stats['b0']:.4f}")
+                                    with col4:
+                                        st.metric("Coefficient b₁", f"{stats['b1']:.4f}")
+                                    with col5:
+                                        st.metric("Coefficient b₂", f"{stats['b2']:.4f}")
+
+                                    # Display equation
+                                    st.markdown(f"**Fitted Plane Equation:**")
+                                    # Format equation for LaTeX display (fix escape sequences)
+                                    latex_eq = equation.replace('Z', z_axis.replace('_', r'\_')).replace('X', x_axis.replace('_', r'\_')).replace('Y', y_axis.replace('_', r'\_')).replace('·', r'\cdot ')
+                                    st.latex(latex_eq)
+                                    st.code(equation, language=None)
+
+                                    # Explanation
+                                    st.info(f"ℹ️ The R² value of {stats['R²']:.4f} indicates that {stats['R²']*100:.2f}% of the variance in {z_axis} is explained by the linear relationship with {x_axis} and {y_axis}. Points are colored by their absolute residual (distance from the fitted plane).")
+
+                                    # Skip the normal layout update section for 3D plots
+                                    layout_height = None  # Flag to skip standard layout updates
+
+                                except Exception as e:
+                                    st.error(f"Error performing 3D OLS regression: {str(e)}")
+                                    st.info("Make sure you have at least 3 valid data points and that X and Y are not perfectly collinear.")
+                                    layout_height = None
+
                             elif selected_chart == 'Heatmap':
                                 # Create correlation heatmap
                                 corr_matrix = plot_data[numeric_cols].corr()
@@ -1087,23 +1224,24 @@ elif input_mode == "Batch Processing":
                                 )
                                 fig.update_traces(texttemplate='%{z:.2f}', textfont_size=10)
 
-                            # Enhance layout
-                            layout_height = 600
+                            # Enhance layout (skip for 3D OLS Regression)
+                            if selected_chart != '3D OLS Regression':
+                                layout_height = 600
 
-                            fig.update_layout(
-                                height=layout_height,
-                                plot_bgcolor='rgba(0,0,0,0)',
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                showlegend=True if color_col else False
-                            )
+                                fig.update_layout(
+                                    height=layout_height,
+                                    plot_bgcolor='rgba(0,0,0,0)',
+                                    paper_bgcolor='rgba(0,0,0,0)',
+                                    showlegend=True if color_col else False
+                                )
 
-                            if selected_chart != 'Heatmap':
-                                if x_axis:
-                                    fig.update_xaxes(title=x_axis.replace('_', ' '))
-                                if y_axis:
-                                    fig.update_yaxes(title=y_axis.replace('_', ' '))
+                                if selected_chart != 'Heatmap':
+                                    if x_axis:
+                                        fig.update_xaxes(title=x_axis.replace('_', ' '))
+                                    if y_axis:
+                                        fig.update_yaxes(title=y_axis.replace('_', ' '))
 
-                            st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig, use_container_width=True)
 
                             # Show additional statistics if relevant
                             if selected_chart in ['Histogram', 'Box Plot', 'Violin Plot'] and y_axis:
@@ -1516,9 +1654,732 @@ elif input_mode == "Data Visualization":
             st.warning("No numeric columns found in the data. Visualizations require at least one numeric column.")
             st.info("The uploaded file should contain numeric data for creating charts.")
 
-# Information section
-with st.expander("ℹ️ Information & Property Explanations"):
-    st.markdown(PropertyExplanations.get_explanations())
+elif input_mode == "3D Regression Analysis":
+    st.header("📐 3D OLS Regression Analysis")
+    st.markdown("Perform 3D Ordinary Least Squares regression: **Z = b₀ + b₁·X + b₂·Y**")
+    st.markdown("Perfect for SAR (Structure-Activity Relationship) analysis and multi-variate modeling")
+
+    from regression_3d import perform_3d_regression, RegressionSummary
+
+    # File upload
+    reg_file = st.file_uploader("Upload CSV file with your data", type=['csv'], key="reg_upload")
+
+    if reg_file is not None:
+        try:
+            reg_df = pd.read_csv(reg_file)
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
+            st.stop()
+
+        # Data preprocessing
+        for col in reg_df.columns:
+            if reg_df[col].dtype == 'object':
+                numeric_converted = pd.to_numeric(reg_df[col], errors='coerce')
+                non_null_original = reg_df[col].notna().sum()
+                non_null_converted = numeric_converted.notna().sum()
+                if non_null_converted > 0 and (non_null_converted / non_null_original) >= 0.5:
+                    reg_df[col] = numeric_converted
+
+        st.subheader("Data Preview")
+        st.info(f"Loaded {len(reg_df)} rows and {len(reg_df.columns)} columns from {reg_file.name}")
+        st.dataframe(reg_df.head(10), use_container_width=True)
+
+        # Get numeric columns
+        numeric_cols_reg = reg_df.select_dtypes(include=[np.number]).columns.tolist()
+
+        if len(numeric_cols_reg) >= 3:
+            st.markdown("---")
+            st.subheader("🔧 Variable Selection")
+            st.markdown("Select three numeric variables for regression: **Z = b₀ + b₁·X + b₂·Y**")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                x_var = st.selectbox(
+                    "📊 Independent Variable 1 (X):",
+                    options=numeric_cols_reg,
+                    index=0,
+                    key="reg_x_var",
+                    help="First predictor variable"
+                )
+
+            with col2:
+                available_y = [col for col in numeric_cols_reg if col != x_var]
+                y_var = st.selectbox(
+                    "📊 Independent Variable 2 (Y):",
+                    options=available_y,
+                    index=0 if available_y else 0,
+                    key="reg_y_var",
+                    help="Second predictor variable"
+                )
+
+            with col3:
+                available_z = [col for col in numeric_cols_reg if col != x_var and col != y_var]
+                z_var = st.selectbox(
+                    "🎯 Dependent Variable (Z):",
+                    options=available_z,
+                    index=0 if available_z else 0,
+                    key="reg_z_var",
+                    help="Response variable to be predicted"
+                )
+
+            # Add example suggestion for SAR data
+            st.info(f"💡 **Selected model:** {z_var} = b₀ + b₁·{x_var} + b₂·{y_var}")
+
+            # Initialize session state for visualization controls BEFORE button (prevent reset)
+            if 'viz_color_scheme' not in st.session_state:
+                st.session_state.viz_color_scheme = 'High Contrast'
+            if 'viz_plane_opacity' not in st.session_state:
+                st.session_state.viz_plane_opacity = 0.5
+            if 'viz_point_size' not in st.session_state:
+                st.session_state.viz_point_size = 8
+            if 'viz_camera_preset' not in st.session_state:
+                st.session_state.viz_camera_preset = 'Default'
+            if 'viz_mesh_resolution' not in st.session_state:
+                st.session_state.viz_mesh_resolution = 30
+            if 'viz_plot_height' not in st.session_state:
+                st.session_state.viz_plot_height = 700
+            if 'viz_show_residuals' not in st.session_state:
+                st.session_state.viz_show_residuals = True
+            if 'viz_residual_lines' not in st.session_state:
+                st.session_state.viz_residual_lines = False
+            if 'viz_show_grid' not in st.session_state:
+                st.session_state.viz_show_grid = True
+
+            # Perform regression button
+            if st.button("🚀 Perform 3D OLS Regression", type="primary"):
+                try:
+                    with st.spinner("Fitting 3D OLS regression model..."):
+                        # Perform regression
+                        model, summary = perform_3d_regression(reg_df, x_var, y_var, z_var)
+
+                    # Store model in session state
+                    st.session_state.regression_model = model
+                    st.session_state.regression_summary = summary
+                    st.session_state.regression_vars = (x_var, y_var, z_var)
+                    st.session_state.regression_done = True
+
+                    st.success("✅ Regression analysis complete!")
+                except Exception as e:
+                    st.error(f"Error performing regression: {str(e)}")
+                    st.info("Please ensure your data has at least 3 valid observations and that X and Y are not perfectly collinear.")
+                    import traceback
+                    with st.expander("🐛 Debug Information"):
+                        st.code(traceback.format_exc())
+
+            # Display results if regression has been performed
+            if st.session_state.get('regression_done', False):
+                try:
+                    # Retrieve from session state
+                    model = st.session_state.regression_model
+                    summary = st.session_state.regression_summary
+                    x_var, y_var, z_var = st.session_state.regression_vars
+
+                    st.success("✅ Regression analysis complete!")
+
+                    # Display statsmodels-style summary
+                    st.markdown("---")
+                    st.subheader("📋 OLS Regression Results")
+
+                    # Text summary
+                    with st.expander("📊 Full Statistical Summary (statsmodels style)", expanded=True):
+                        st.code(summary.get_summary_text(), language=None)
+
+                    # Coefficient table
+                    st.markdown("### 📈 Coefficient Table")
+                    coef_df = summary.get_summary_dataframe()
+                    st.dataframe(coef_df, use_container_width=True)
+
+                    # Key metrics in columns
+                    st.markdown("### 🎯 Key Model Statistics")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("R² (Goodness of Fit)", f"{summary.r_squared:.4f}")
+                        quality = "Excellent" if summary.r_squared >= 0.9 else "Good" if summary.r_squared >= 0.7 else "Moderate" if summary.r_squared >= 0.5 else "Poor"
+                        st.caption(f"Quality: {quality}")
+                    with col2:
+                        st.metric("Adjusted R²", f"{summary.adj_r_squared:.4f}")
+                        st.caption("Adjusted for # of predictors")
+                    with col3:
+                        st.metric("RMSE", f"{summary.model.rmse:.4f}")
+                        st.caption("Root Mean Squared Error")
+                    with col4:
+                        st.metric("F-statistic", f"{summary.f_statistic:.2f}")
+                        st.caption(f"p-value: {summary.f_pvalue:.2e}")
+
+                    # Equation display
+                    st.markdown("### ✏️ Fitted Plane Equation")
+                    equation = model.get_equation_string(decimals=3)
+                    equation_display = equation.replace('Z', z_var).replace('X', x_var).replace('Y', y_var)
+                    st.code(equation_display, language=None)
+
+                    # Interpretation
+                    st.markdown("### 📖 Interpretation")
+                    st.markdown(f"""
+                    **Model Equation:** `{equation_display}`
+
+                    **What this means:**
+                    - **Intercept (b₀ = {model.b0:.3f})**: Baseline value of {z_var} when both {x_var} and {y_var} are zero
+                    - **{x_var} coefficient (b₁ = {model.b1:.3f})**: For each 1-unit increase in {x_var}, {z_var} changes by {model.b1:.3f} (holding {y_var} constant)
+                    - **{y_var} coefficient (b₂ = {model.b2:.3f})**: For each 1-unit increase in {y_var}, {z_var} changes by {model.b2:.3f} (holding {x_var} constant)
+                    - **R² = {summary.r_squared:.3f}**: This model explains {summary.r_squared*100:.1f}% of the variance in {z_var}
+                    """)
+
+                    # Coefficient significance
+                    st.markdown("### 🔍 Statistical Significance of Coefficients")
+                    sig_data = []
+                    for i, (var_name, coef, se, t, p) in enumerate([
+                        ('Intercept', model.b0, summary.se_b0, summary.t_b0, summary.p_b0),
+                        (x_var, model.b1, summary.se_b1, summary.t_b1, summary.p_b1),
+                        (y_var, model.b2, summary.se_b2, summary.t_b2, summary.p_b2)
+                    ]):
+                        significance = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
+                        sig_label = "Highly significant" if p < 0.001 else "Significant" if p < 0.01 else "Moderately significant" if p < 0.05 else "Not significant"
+                        sig_data.append({
+                            'Variable': var_name,
+                            'Coefficient': f"{coef:.4f}",
+                            'p-value': f"{p:.4e}",
+                            'Significance': significance,
+                            'Interpretation': sig_label
+                        })
+
+                    sig_df = pd.DataFrame(sig_data)
+                    st.dataframe(sig_df, use_container_width=True)
+                    st.caption("Significance codes: *** p<0.001, ** p<0.01, * p<0.05, ns: not significant")
+
+                    # 3D Visualization with Enhanced Controls
+                    st.markdown("---")
+                    st.markdown("### 🎨 Enhanced 3D Visualization")
+
+                    from visualization_3d_enhanced import Enhanced3DPlot
+
+                    # Create enhanced plot object
+                    enhanced_plot = Enhanced3DPlot(model, x_var, y_var, z_var)
+
+                    # Visualization controls
+                    with st.expander("🎛️ Visualization Controls", expanded=True):
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            st.markdown("**🎨 Style Settings**")
+                            color_scheme = st.selectbox(
+                                "Color Scheme:",
+                                options=list(enhanced_plot.COLOR_SCHEMES.keys()),
+                                index=list(enhanced_plot.COLOR_SCHEMES.keys()).index(st.session_state.viz_color_scheme),
+                                key="color_scheme_reg_input"
+                            )
+                            st.session_state.viz_color_scheme = color_scheme
+
+                            plane_opacity = st.slider(
+                                "Plane Opacity:",
+                                min_value=0.0,
+                                max_value=1.0,
+                                value=st.session_state.viz_plane_opacity,
+                                step=0.1,
+                                key="plane_opacity_reg_input",
+                                help="Lower = more transparent, easier to see points"
+                            )
+                            st.session_state.viz_plane_opacity = plane_opacity
+
+                            point_size = st.slider(
+                                "Point Size:",
+                                min_value=2,
+                                max_value=15,
+                                value=st.session_state.viz_point_size,
+                                key="point_size_reg_input"
+                            )
+                            st.session_state.viz_point_size = point_size
+
+                        with col2:
+                            st.markdown("**📐 Camera & View**")
+                            camera_preset = st.selectbox(
+                                "Camera Angle:",
+                                options=list(enhanced_plot.CAMERA_PRESETS.keys()),
+                                index=list(enhanced_plot.CAMERA_PRESETS.keys()).index(st.session_state.viz_camera_preset),
+                                key="camera_preset_reg_input"
+                            )
+                            st.session_state.viz_camera_preset = camera_preset
+
+                            mesh_resolution = st.slider(
+                                "Plane Resolution:",
+                                min_value=10,
+                                max_value=50,
+                                value=st.session_state.viz_mesh_resolution,
+                                step=5,
+                                key="mesh_resolution_reg_input",
+                                help="Higher = smoother plane (slower)"
+                            )
+                            st.session_state.viz_mesh_resolution = mesh_resolution
+
+                            plot_height = st.slider(
+                                "Plot Height (px):",
+                                min_value=400,
+                                max_value=1000,
+                                value=st.session_state.viz_plot_height,
+                                step=50,
+                                key="plot_height_reg_input"
+                            )
+                            st.session_state.viz_plot_height = plot_height
+
+                        with col3:
+                            st.markdown("**🔧 Features**")
+                            show_residuals = st.checkbox(
+                                "Color by Residuals",
+                                value=st.session_state.viz_show_residuals,
+                                key="show_residuals_reg_input",
+                                help="Color points by prediction error"
+                            )
+                            st.session_state.viz_show_residuals = show_residuals
+
+                            residual_lines = st.checkbox(
+                                "Show Residual Lines",
+                                value=st.session_state.viz_residual_lines,
+                                key="residual_lines_reg_input",
+                                help="Draw lines from points to plane"
+                            )
+                            st.session_state.viz_residual_lines = residual_lines
+
+                            show_grid = st.checkbox(
+                                "Show Grid",
+                                value=st.session_state.viz_show_grid,
+                                key="show_grid_reg_input"
+                            )
+                            st.session_state.viz_show_grid = show_grid
+
+                    # Create enhanced 3D plot
+                    fig = enhanced_plot.create_enhanced_plot(
+                        color_scheme=color_scheme,
+                        camera_preset=camera_preset,
+                        show_residuals=show_residuals,
+                        residual_lines=residual_lines,
+                        plane_opacity=plane_opacity,
+                        point_size=point_size,
+                        mesh_resolution=mesh_resolution,
+                        show_grid=show_grid,
+                        height=plot_height
+                    )
+
+                    # Display plot with enhanced config
+                    plot_config = enhanced_plot.get_plot_config()
+                    st.plotly_chart(fig, use_container_width=True, config=plot_config)
+
+                    # Interactive tips
+                    st.markdown("""
+                    **💡 Interactive Controls:**
+                    - 🖱️ **Click & Drag** to rotate the 3D view
+                    - 🔍 **Scroll** to zoom in/out
+                    - 📸 **Camera icon** (top right) to download high-res image
+                    - 🏠 **Home icon** to reset view
+                    - 📐 Try different **Camera Angles** above for standard views
+                    """)
+
+                    # Quick view buttons
+                    st.markdown("**🎬 Quick Views:**")
+                    view_cols = st.columns(4)
+
+                    quick_views = ['Default', 'Top View', 'Isometric', 'Bird\'s Eye']
+                    for idx, view_name in enumerate(quick_views):
+                        with view_cols[idx]:
+                            if st.button(f"📷 {view_name}", key=f"quick_view_{idx}", use_container_width=True):
+                                st.session_state.viz_camera_preset = view_name
+                                st.rerun()
+
+                    # Export options
+                    with st.expander("💾 Export Options"):
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.markdown("**High-Resolution Image**")
+                            st.info("Use the 📸 camera icon on the plot to download as PNG (1600x1200 @ 2x resolution)")
+
+                        with col2:
+                            st.markdown("**Interactive HTML**")
+                            if st.button("📊 Generate Interactive HTML", key="export_html_reg"):
+                                import tempfile
+                                import base64
+
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w') as f:
+                                    fig.write_html(
+                                        f.name,
+                                        include_plotlyjs='cdn',
+                                        config=plot_config
+                                    )
+
+                                    # Read and encode
+                                    with open(f.name, 'r', encoding='utf-8') as html_file:
+                                        html_content = html_file.read()
+
+                                    st.download_button(
+                                        label="⬇️ Download Interactive 3D Plot (HTML)",
+                                        data=html_content,
+                                        file_name=f"3D_Regression_{z_var}_interactive.html",
+                                        mime="text/html",
+                                        key="download_html_reg"
+                                    )
+                                    st.success("✅ Interactive HTML ready! You can open it in any browser and rotate the 3D plot.")
+
+                    # Residual Analysis
+                    st.markdown("---")
+                    st.markdown("### 📊 Residual Analysis")
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        # Residual distribution
+                        fig_res_hist = px.histogram(
+                            x=model.residuals,
+                            nbins=20,
+                            title="Residual Distribution",
+                            labels={'x': 'Residual'},
+                            color_discrete_sequence=['#4ECDC4']
+                        )
+                        fig_res_hist.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Zero")
+                        fig_res_hist.update_layout(height=400, showlegend=False)
+                        st.plotly_chart(fig_res_hist, use_container_width=True)
+                        st.caption("Residuals should be normally distributed around zero")
+
+                    with col2:
+                        # Predicted vs Actual
+                        predicted = model.predict(model.x, model.y)
+                        fig_pred = px.scatter(
+                            x=predicted,
+                            y=model.z,
+                            title="Predicted vs Actual Values",
+                            labels={'x': f'Predicted {z_var}', 'y': f'Actual {z_var}'},
+                            color_discrete_sequence=['#FF6B6B']
+                        )
+                        # Add perfect prediction line
+                        min_val = min(predicted.min(), model.z.min())
+                        max_val = max(predicted.max(), model.z.max())
+                        fig_pred.add_trace(go.Scatter(
+                            x=[min_val, max_val],
+                            y=[min_val, max_val],
+                            mode='lines',
+                            line=dict(color='gray', dash='dash'),
+                            name='Perfect Prediction',
+                            showlegend=True
+                        ))
+                        fig_pred.update_layout(height=400)
+                        st.plotly_chart(fig_pred, use_container_width=True)
+                        st.caption("Points should lie close to the diagonal line for good fit")
+
+                    # Diagnostic tests summary
+                    st.markdown("### 🔬 Diagnostic Tests")
+                    diag_col1, diag_col2, diag_col3 = st.columns(3)
+
+                    with diag_col1:
+                        st.metric("Durbin-Watson", f"{summary.durbin_watson:.3f}")
+                        dw_interpretation = "No autocorrelation" if 1.5 < summary.durbin_watson < 2.5 else "Possible autocorrelation"
+                        st.caption(f"{dw_interpretation} (ideal: ~2.0)")
+
+                    with diag_col2:
+                        st.metric("Jarque-Bera (JB)", f"{summary.jb_statistic:.3f}")
+                        jb_interpretation = "Normal residuals" if summary.jb_pvalue > 0.05 else "Non-normal residuals"
+                        st.caption(f"{jb_interpretation} (p={summary.jb_pvalue:.3f})")
+
+                    with diag_col3:
+                        st.metric("Condition Number", f"{summary.condition_number:.1f}")
+                        cn_interpretation = "Low multicollinearity" if summary.condition_number < 30 else "Moderate" if summary.condition_number < 100 else "High multicollinearity"
+                        st.caption(cn_interpretation)
+
+                    # Download results
+                    st.markdown("---")
+                    st.markdown("### 💾 Export Results")
+
+                    # Create summary report
+                    report_lines = [
+                        "=" * 80,
+                        "3D OLS REGRESSION ANALYSIS REPORT",
+                        "=" * 80,
+                        f"\nFile: {reg_file.name}",
+                        f"Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                        f"\nModel: {z_var} = b0 + b1·{x_var} + b2·{y_var}",
+                        "\n" + summary.get_summary_text(),
+                        "\n" + "=" * 80,
+                        "END OF REPORT",
+                        "=" * 80
+                    ]
+                    report_text = "\n".join(report_lines)
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            label="📄 Download Full Report (TXT)",
+                            data=report_text,
+                            file_name=f"3D_OLS_Regression_Report_{z_var}.txt",
+                            mime="text/plain"
+                        )
+
+                    with col2:
+                        # Export coefficients and stats
+                        stats_dict = summary.get_statistics_dict()
+                        stats_df = pd.DataFrame([stats_dict])
+                        st.download_button(
+                            label="📊 Download Statistics (CSV)",
+                            data=stats_df.to_csv(index=False),
+                            file_name=f"3D_OLS_Statistics_{z_var}.csv",
+                            mime="text/csv"
+                        )
+
+                except Exception as e:
+                    st.error(f"Error displaying regression results: {str(e)}")
+                    import traceback
+                    with st.expander("🐛 Debug Information"):
+                        st.code(traceback.format_exc())
+
+        else:
+            st.warning(f"⚠️ Need at least 3 numeric columns for 3D regression. Found {len(numeric_cols_reg)} numeric columns.")
+            st.info("Please upload a CSV file with at least 3 numeric columns (2 independent variables and 1 dependent variable).")
+
+    else:
+        st.info("👆 Upload a CSV file to get started with 3D regression analysis")
+        st.markdown("""
+        ### 📚 What is 3D OLS Regression?
+
+        3D Ordinary Least Squares regression fits a **plane** to your data in 3-dimensional space:
+
+        **Z = b₀ + b₁·X + b₂·Y**
+
+        Where:
+        - **Z** is the dependent variable (what you want to predict)
+        - **X** and **Y** are independent variables (predictors)
+        - **b₀, b₁, b₂** are coefficients calculated to minimize prediction error
+
+        ### 🎯 Use Cases:
+
+        **SAR Analysis (Structure-Activity Relationship)**:
+        - Predict **biological activity (pKi)** from **LogP** and **TPSA**
+        - Model **IC50** values from molecular descriptors
+
+        **General Applications**:
+        - Multi-variate modeling with two predictors
+        - Understanding combined effects of two variables
+        - Scientific data analysis requiring 3D relationships
+
+        ### 📊 Output Includes:
+
+        - ✅ Complete statistical summary (like statsmodels)
+        - ✅ Coefficient table with p-values and confidence intervals
+        - ✅ R², Adjusted R², RMSE, F-statistic
+        - ✅ Interactive 3D visualization
+        - ✅ Residual analysis plots
+        - ✅ Diagnostic tests (Durbin-Watson, Jarque-Bera)
+        - ✅ Downloadable report and statistics
+
+        ### 🚀 Example Data Structure:
+
+        Your CSV should have at least 3 numeric columns:
+
+        | LogP | TPSA | pKi  |
+        |------|------|------|
+        | 2.3  | 45.2 | 7.1  |
+        | 3.1  | 62.8 | 6.8  |
+        | 1.9  | 38.5 | 7.5  |
+        | ...  | ...  | ...  |
+
+        Upload your data above to start!
+        """)
+
+# Information section - Context-aware based on mode
+if input_mode == "3D Regression Analysis":
+    with st.expander("ℹ️ 3D Regression Analysis - Help & Documentation"):
+        st.markdown("""
+        ### 📐 3D Ordinary Least Squares (OLS) Regression
+
+        **Mathematical Model:**
+        ```
+        Z = b₀ + b₁·X + b₂·Y + ε
+        ```
+
+        Where:
+        - **Z** = Dependent variable (response, what you want to predict)
+        - **X, Y** = Independent variables (predictors, features)
+        - **b₀** = Intercept (baseline value when X=0, Y=0)
+        - **b₁** = Coefficient for X (effect of X on Z, holding Y constant)
+        - **b₂** = Coefficient for Y (effect of Y on Z, holding X constant)
+        - **ε** = Error term (residual)
+
+        ---
+
+        ### 📊 Statistical Output Explained
+
+        #### **Model Quality Metrics:**
+        - **R² (R-squared)**: Proportion of variance explained (0-1, higher is better)
+          - 0.9+ = Excellent fit
+          - 0.7-0.9 = Good fit
+          - 0.5-0.7 = Moderate fit
+          - <0.5 = Poor fit
+
+        - **Adjusted R²**: R² adjusted for number of predictors (penalizes overfitting)
+
+        - **RMSE (Root Mean Squared Error)**: Average prediction error in Z units
+
+        - **F-statistic**: Tests if model is better than just using mean of Z
+          - High F-value + low p-value = model is significant
+
+        #### **Coefficient Statistics:**
+        - **Coefficient**: Estimated effect size
+        - **Std Error**: Uncertainty in coefficient estimate
+        - **t-statistic**: Coefficient / Std Error (measures significance)
+        - **P>|t|**: Probability that coefficient is actually zero
+          - p < 0.001 (***) = Highly significant
+          - p < 0.01 (**) = Significant
+          - p < 0.05 (*) = Moderately significant
+          - p > 0.05 (ns) = Not significant
+        - **[0.025, 0.975]**: 95% confidence interval for coefficient
+
+        #### **Diagnostic Tests:**
+        - **Durbin-Watson**: Tests for autocorrelation (ideal value ≈ 2.0)
+          - 1.5-2.5 = No autocorrelation
+          - <1.5 or >2.5 = Possible autocorrelation
+
+        - **Jarque-Bera (JB)**: Tests if residuals are normally distributed
+          - p > 0.05 = Residuals are normal (good)
+          - p < 0.05 = Non-normal residuals (potential issue)
+
+        - **Condition Number**: Tests for multicollinearity
+          - <30 = Low multicollinearity (good)
+          - 30-100 = Moderate multicollinearity
+          - >100 = High multicollinearity (X and Y are too correlated)
+
+        - **AIC/BIC**: Model comparison metrics (lower is better)
+
+        ---
+
+        ### 🎯 Use Cases
+
+        #### **SAR Analysis (Structure-Activity Relationship):**
+        - **Predict biological activity (pKi, IC50)** from molecular descriptors
+        - Example: `pKi = b₀ + b₁·LogP + b₂·TPSA`
+        - Understand how lipophilicity (LogP) and polarity (TPSA) affect binding
+
+        #### **QSAR (Quantitative Structure-Activity Relationship):**
+        - Model drug efficacy from chemical properties
+        - Optimize lead compounds
+        - Predict activity for new molecules
+
+        #### **General Scientific Data:**
+        - Any relationship with 2 independent variables and 1 dependent
+        - Physics, chemistry, biology, economics, engineering
+
+        ---
+
+        ### 🎨 Enhanced Visualization Features
+
+        #### **6 Professional Color Schemes:**
+        1. **Default** - Classic red/blue
+        2. **Professional** - Viridis/YlGnBu
+        3. **Dark Mode** - Plasma on dark background
+        4. **High Contrast** - Hot/Ice colors
+        5. **Publication** - Print-ready styling
+        6. **Colorblind Safe** - Accessible Cividis colors
+
+        #### **8 Camera Presets:**
+        - **Default**: Standard 3D perspective
+        - **Top View**: Looking down Z-axis
+        - **Side Views**: X and Y axis perspectives
+        - **Isometric**: 45° engineering view
+        - **Bird's Eye**: High-angle overview
+        - **Close-up/Far View**: Zoom control
+
+        #### **Interactive Features:**
+        - **Residual Lines**: Show vertical distance from points to plane
+        - **Color by Residuals**: Highlight poorly-fitted points
+        - **Adjustable Opacity**: See through plane to view all data
+        - **High-Res Export**: PNG at 3200x2400 for publications
+        - **Interactive HTML**: Share rotatable 3D plots
+
+        ---
+
+        ### 📝 OLS Assumptions (Check These!)
+
+        1. **Linearity**: Z has a linear relationship with X and Y
+        2. **Independence**: Observations are independent
+        3. **Homoscedasticity**: Constant variance of residuals
+        4. **Normality**: Residuals are normally distributed
+        5. **No Multicollinearity**: X and Y are not too correlated
+
+        **How to Check:**
+        - View residual plots (should be random scatter)
+        - Check Jarque-Bera test (p > 0.05 for normality)
+        - Check Condition Number (<30 for low multicollinearity)
+        - Look at residual distribution histogram (bell-shaped)
+
+        ---
+
+        ### 💡 Tips for Best Results
+
+        1. **Data Preparation:**
+           - Remove outliers or use robust regression
+           - Check for missing values
+           - Ensure sufficient sample size (n ≥ 30 recommended)
+
+        2. **Variable Selection:**
+           - Choose X and Y that make scientific sense
+           - Avoid highly correlated X and Y
+           - Center/scale variables if very different ranges
+
+        3. **Interpretation:**
+           - Always check R² AND residual plots
+           - Look for patterns in residuals (shouldn't be any)
+           - Consider coefficient significance (p-values)
+           - Report confidence intervals for coefficients
+
+        4. **Visualization:**
+           - Try different camera angles to see all data
+           - Enable residual lines to spot outliers
+           - Use colorblind-safe scheme for presentations
+           - Export high-res for publications
+
+        ---
+
+        ### 📚 References
+
+        **Mathematical Foundation:**
+        - Based on: https://sapiencespace.com/breaking-down-3d-linear-regression/
+        - Classic OLS theory with analytical solution
+
+        **Statistical Tests:**
+        - Durbin-Watson: Tests for serial correlation
+        - Jarque-Bera: Normality test (Jarque & Bera, 1980)
+        - F-test: Overall model significance
+
+        **Software:**
+        - Similar output to statsmodels (Python)
+        - Compatible with R lm() function output
+
+        ---
+
+        ### 🆘 Troubleshooting
+
+        **"Singular matrix" or "Perfect multicollinearity" error:**
+        - X and Y are perfectly correlated (one is a multiple of the other)
+        - Solution: Choose different variables
+
+        **Very low R² (<0.3):**
+        - Linear model may not fit your data
+        - Try transforming variables (log, sqrt)
+        - Consider non-linear models
+
+        **High Condition Number (>100):**
+        - X and Y are too correlated
+        - Solution: Use only one of them, or PCA
+
+        **Non-normal residuals (low JB p-value):**
+        - May indicate outliers or wrong model
+        - Check for outliers in data
+        - Consider robust regression
+
+        ---
+
+        **Developed by:** Yashwanth Reddy for ITR-UIC
+        **Part of:** Chemo-Informatics Toolkit
+        **Module:** 3D OLS Regression Analysis
+        """)
+else:
+    # Default information for other modes
+    with st.expander("ℹ️ Information & Property Explanations"):
+        st.markdown(PropertyExplanations.get_explanations())
 
 # Visualization Help Section
 with st.expander("📊 Visualization Guide"):
