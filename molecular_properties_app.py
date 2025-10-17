@@ -1726,54 +1726,12 @@ elif input_mode == "3D Regression Analysis":
             # Add example suggestion for SAR data
             st.info(f"💡 **Selected model:** {z_var} = b₀ + b₁·{x_var} + b₂·{y_var}")
 
-            # Initialize session state for visualization controls BEFORE button (prevent reset)
-            if 'viz_color_scheme' not in st.session_state:
-                st.session_state.viz_color_scheme = 'High Contrast'
-            if 'viz_plane_opacity' not in st.session_state:
-                st.session_state.viz_plane_opacity = 0.5
-            if 'viz_point_size' not in st.session_state:
-                st.session_state.viz_point_size = 8
-            if 'viz_camera_preset' not in st.session_state:
-                st.session_state.viz_camera_preset = 'Default'
-            if 'viz_mesh_resolution' not in st.session_state:
-                st.session_state.viz_mesh_resolution = 30
-            if 'viz_plot_height' not in st.session_state:
-                st.session_state.viz_plot_height = 700
-            if 'viz_show_residuals' not in st.session_state:
-                st.session_state.viz_show_residuals = True
-            if 'viz_residual_lines' not in st.session_state:
-                st.session_state.viz_residual_lines = False
-            if 'viz_show_grid' not in st.session_state:
-                st.session_state.viz_show_grid = True
-
             # Perform regression button
             if st.button("🚀 Perform 3D OLS Regression", type="primary"):
                 try:
                     with st.spinner("Fitting 3D OLS regression model..."):
                         # Perform regression
                         model, summary = perform_3d_regression(reg_df, x_var, y_var, z_var)
-
-                    # Store model in session state
-                    st.session_state.regression_model = model
-                    st.session_state.regression_summary = summary
-                    st.session_state.regression_vars = (x_var, y_var, z_var)
-                    st.session_state.regression_done = True
-
-                    st.success("✅ Regression analysis complete!")
-                except Exception as e:
-                    st.error(f"Error performing regression: {str(e)}")
-                    st.info("Please ensure your data has at least 3 valid observations and that X and Y are not perfectly collinear.")
-                    import traceback
-                    with st.expander("🐛 Debug Information"):
-                        st.code(traceback.format_exc())
-
-            # Display results if regression has been performed
-            if st.session_state.get('regression_done', False):
-                try:
-                    # Retrieve from session state
-                    model = st.session_state.regression_model
-                    summary = st.session_state.regression_summary
-                    x_var, y_var, z_var = st.session_state.regression_vars
 
                     st.success("✅ Regression analysis complete!")
 
@@ -1847,176 +1805,67 @@ elif input_mode == "3D Regression Analysis":
                     st.dataframe(sig_df, use_container_width=True)
                     st.caption("Significance codes: *** p<0.001, ** p<0.01, * p<0.05, ns: not significant")
 
-                    # 3D Visualization with Enhanced Controls
+                    # 3D Visualization
                     st.markdown("---")
-                    st.markdown("### 🎨 Enhanced 3D Visualization")
+                    st.markdown("### 🎨 3D Visualization")
 
-                    from visualization_3d_enhanced import Enhanced3DPlot
+                    # Get plane mesh
+                    X_mesh, Y_mesh, Z_mesh = model.get_plane_mesh(num_points=25)
 
-                    # Create enhanced plot object
-                    enhanced_plot = Enhanced3DPlot(model, x_var, y_var, z_var)
+                    # Create 3D scatter plot
+                    fig = go.Figure()
 
-                    # Visualization controls
-                    with st.expander("🎛️ Visualization Controls", expanded=True):
-                        col1, col2, col3 = st.columns(3)
+                    # Color by residuals
+                    residuals_abs = np.abs(model.residuals)
 
-                        with col1:
-                            st.markdown("**🎨 Style Settings**")
-                            color_scheme = st.selectbox(
-                                "Color Scheme:",
-                                options=list(enhanced_plot.COLOR_SCHEMES.keys()),
-                                index=list(enhanced_plot.COLOR_SCHEMES.keys()).index(st.session_state.viz_color_scheme),
-                                key="color_scheme_reg_input"
+                    # Add data points
+                    fig.add_trace(go.Scatter3d(
+                        x=model.x,
+                        y=model.y,
+                        z=model.z,
+                        mode='markers',
+                        marker=dict(
+                            size=7,
+                            color=residuals_abs,
+                            colorscale='Reds',
+                            showscale=True,
+                            colorbar=dict(title='|Residual|', x=1.1)
+                        ),
+                        name='Data Points',
+                        text=[f"{x_var}: {x:.3f}<br>{y_var}: {y:.3f}<br>{z_var}: {z:.3f}<br>Residual: {r:.3f}"
+                              for x, y, z, r in zip(model.x, model.y, model.z, model.residuals)],
+                        hovertemplate='%{text}<extra></extra>'
+                    ))
+
+                    # Add fitted plane
+                    fig.add_trace(go.Surface(
+                        x=X_mesh,
+                        y=Y_mesh,
+                        z=Z_mesh,
+                        opacity=0.7,
+                        colorscale='Blues',
+                        showscale=False,
+                        name='Fitted Plane',
+                        hovertemplate='Fitted Plane<br>Predicted Value<extra></extra>'
+                    ))
+
+                    # Update layout
+                    fig.update_layout(
+                        title=f"3D OLS Regression: {z_var} vs {x_var} and {y_var}",
+                        scene=dict(
+                            xaxis_title=x_var,
+                            yaxis_title=y_var,
+                            zaxis_title=z_var,
+                            camera=dict(
+                                eye=dict(x=1.5, y=1.5, z=1.3)
                             )
-                            st.session_state.viz_color_scheme = color_scheme
-
-                            plane_opacity = st.slider(
-                                "Plane Opacity:",
-                                min_value=0.0,
-                                max_value=1.0,
-                                value=st.session_state.viz_plane_opacity,
-                                step=0.1,
-                                key="plane_opacity_reg_input",
-                                help="Lower = more transparent, easier to see points"
-                            )
-                            st.session_state.viz_plane_opacity = plane_opacity
-
-                            point_size = st.slider(
-                                "Point Size:",
-                                min_value=2,
-                                max_value=15,
-                                value=st.session_state.viz_point_size,
-                                key="point_size_reg_input"
-                            )
-                            st.session_state.viz_point_size = point_size
-
-                        with col2:
-                            st.markdown("**📐 Camera & View**")
-                            camera_preset = st.selectbox(
-                                "Camera Angle:",
-                                options=list(enhanced_plot.CAMERA_PRESETS.keys()),
-                                index=list(enhanced_plot.CAMERA_PRESETS.keys()).index(st.session_state.viz_camera_preset),
-                                key="camera_preset_reg_input"
-                            )
-                            st.session_state.viz_camera_preset = camera_preset
-
-                            mesh_resolution = st.slider(
-                                "Plane Resolution:",
-                                min_value=10,
-                                max_value=50,
-                                value=st.session_state.viz_mesh_resolution,
-                                step=5,
-                                key="mesh_resolution_reg_input",
-                                help="Higher = smoother plane (slower)"
-                            )
-                            st.session_state.viz_mesh_resolution = mesh_resolution
-
-                            plot_height = st.slider(
-                                "Plot Height (px):",
-                                min_value=400,
-                                max_value=1000,
-                                value=st.session_state.viz_plot_height,
-                                step=50,
-                                key="plot_height_reg_input"
-                            )
-                            st.session_state.viz_plot_height = plot_height
-
-                        with col3:
-                            st.markdown("**🔧 Features**")
-                            show_residuals = st.checkbox(
-                                "Color by Residuals",
-                                value=st.session_state.viz_show_residuals,
-                                key="show_residuals_reg_input",
-                                help="Color points by prediction error"
-                            )
-                            st.session_state.viz_show_residuals = show_residuals
-
-                            residual_lines = st.checkbox(
-                                "Show Residual Lines",
-                                value=st.session_state.viz_residual_lines,
-                                key="residual_lines_reg_input",
-                                help="Draw lines from points to plane"
-                            )
-                            st.session_state.viz_residual_lines = residual_lines
-
-                            show_grid = st.checkbox(
-                                "Show Grid",
-                                value=st.session_state.viz_show_grid,
-                                key="show_grid_reg_input"
-                            )
-                            st.session_state.viz_show_grid = show_grid
-
-                    # Create enhanced 3D plot
-                    fig = enhanced_plot.create_enhanced_plot(
-                        color_scheme=color_scheme,
-                        camera_preset=camera_preset,
-                        show_residuals=show_residuals,
-                        residual_lines=residual_lines,
-                        plane_opacity=plane_opacity,
-                        point_size=point_size,
-                        mesh_resolution=mesh_resolution,
-                        show_grid=show_grid,
-                        height=plot_height
+                        ),
+                        height=700,
+                        showlegend=True
                     )
 
-                    # Display plot with enhanced config
-                    plot_config = enhanced_plot.get_plot_config()
-                    st.plotly_chart(fig, use_container_width=True, config=plot_config)
-
-                    # Interactive tips
-                    st.markdown("""
-                    **💡 Interactive Controls:**
-                    - 🖱️ **Click & Drag** to rotate the 3D view
-                    - 🔍 **Scroll** to zoom in/out
-                    - 📸 **Camera icon** (top right) to download high-res image
-                    - 🏠 **Home icon** to reset view
-                    - 📐 Try different **Camera Angles** above for standard views
-                    """)
-
-                    # Quick view buttons
-                    st.markdown("**🎬 Quick Views:**")
-                    view_cols = st.columns(4)
-
-                    quick_views = ['Default', 'Top View', 'Isometric', 'Bird\'s Eye']
-                    for idx, view_name in enumerate(quick_views):
-                        with view_cols[idx]:
-                            if st.button(f"📷 {view_name}", key=f"quick_view_{idx}", use_container_width=True):
-                                st.session_state.viz_camera_preset = view_name
-                                st.rerun()
-
-                    # Export options
-                    with st.expander("💾 Export Options"):
-                        col1, col2 = st.columns(2)
-
-                        with col1:
-                            st.markdown("**High-Resolution Image**")
-                            st.info("Use the 📸 camera icon on the plot to download as PNG (1600x1200 @ 2x resolution)")
-
-                        with col2:
-                            st.markdown("**Interactive HTML**")
-                            if st.button("📊 Generate Interactive HTML", key="export_html_reg"):
-                                import tempfile
-                                import base64
-
-                                with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w') as f:
-                                    fig.write_html(
-                                        f.name,
-                                        include_plotlyjs='cdn',
-                                        config=plot_config
-                                    )
-
-                                    # Read and encode
-                                    with open(f.name, 'r', encoding='utf-8') as html_file:
-                                        html_content = html_file.read()
-
-                                    st.download_button(
-                                        label="⬇️ Download Interactive 3D Plot (HTML)",
-                                        data=html_content,
-                                        file_name=f"3D_Regression_{z_var}_interactive.html",
-                                        mime="text/html",
-                                        key="download_html_reg"
-                                    )
-                                    st.success("✅ Interactive HTML ready! You can open it in any browser and rotate the 3D plot.")
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.caption("💡 Points are colored by their absolute residual (distance from fitted plane). Use mouse to rotate the 3D plot.")
 
                     # Residual Analysis
                     st.markdown("---")
