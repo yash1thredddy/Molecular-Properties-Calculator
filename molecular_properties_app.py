@@ -1150,35 +1150,94 @@ elif input_mode == "Batch Processing":
                                             hovertemplate='%{text}<extra></extra>'
                                         ))
 
-                                    # Add fitted plane
-                                    fig.add_trace(go.Surface(
-                                        x=X_mesh,
-                                        y=Y_mesh,
-                                        z=Z_mesh,
+                                    # Compute plane corners and add a lightweight Mesh3d plane (faster than Surface)
+                                    x_min_d, x_max_d = float(np.min(ols_model.x)), float(np.max(ols_model.x))
+                                    y_min_d, y_max_d = float(np.min(ols_model.y)), float(np.max(ols_model.y))
+                                    # 10% padding similar to get_plane_mesh
+                                    x_pad = 0.1 * (x_max_d - x_min_d) if x_max_d > x_min_d else 1.0
+                                    y_pad = 0.1 * (y_max_d - y_min_d) if y_max_d > y_min_d else 1.0
+                                    x0, x1 = x_min_d - x_pad, x_max_d + x_pad
+                                    y0, y1 = y_min_d - y_pad, y_max_d + y_pad
+
+                                    corners_x = np.array([x0, x1, x1, x0])
+                                    corners_y = np.array([y0, y0, y1, y1])
+                                    corners_z = ols_model.predict(corners_x, corners_y)
+
+                                    fig.add_trace(go.Mesh3d(
+                                        x=corners_x,
+                                        y=corners_y,
+                                        z=corners_z,
+                                        i=[0, 1, 2, 0, 2, 3],
                                         opacity=0.6,
-                                        colorscale='Blues',
-                                        showscale=False,
+                                        color='royalblue',
+                                        lighting=dict(
+                                            ambient=0.5,
+                                            diffuse=0.7,
+                                            specular=0.2,
+                                            roughness=0.9,
+                                            fresnel=0.2
+                                        ),
+                                        lightposition=dict(x=200, y=100, z=300),
                                         name='Fitted Plane',
-                                        hovertemplate='Fitted Plane<extra></extra>'
+                                        hoverinfo='skip'
                                     ))
 
                                     # Update layout for 3D plot
+                                    # Fix axis ranges and preserve camera to avoid flipping/jumps
+                                    z_min_d, z_max_d = float(np.min(ols_model.z)), float(np.max(ols_model.z))
+                                    z_plane_min, z_plane_max = float(np.min(Z_mesh)), float(np.max(Z_mesh))
+                                    z0, z1 = min(z_min_d, z_plane_min), max(z_max_d, z_plane_max)
+
                                     fig.update_layout(
                                         title=f"3D OLS Regression: {z_axis} vs {x_axis} and {y_axis}",
+                                        uirevision="3d-ols",  # keep view stable across reruns
+                                        paper_bgcolor='#0e1117',
+                                        font=dict(color='#d9d9d9'),
                                         scene=dict(
+                                            bgcolor='#0e1117',
                                             xaxis_title=x_axis.replace('_', ' '),
                                             yaxis_title=y_axis.replace('_', ' '),
                                             zaxis_title=z_axis.replace('_', ' '),
+                                            xaxis=dict(
+                                                range=[x0, x1], showspikes=False,
+                                                showbackground=True, backgroundcolor='#1b1f2a',
+                                                gridcolor='#2b3242', zerolinecolor='#444',
+                                                tickfont=dict(color='#c2c7cf'), titlefont=dict(color='#c2c7cf')
+                                            ),
+                                            yaxis=dict(
+                                                range=[y0, y1], showspikes=False,
+                                                showbackground=True, backgroundcolor='#1b1f2a',
+                                                gridcolor='#2b3242', zerolinecolor='#444',
+                                                tickfont=dict(color='#c2c7cf'), titlefont=dict(color='#c2c7cf')
+                                            ),
+                                            zaxis=dict(
+                                                range=[z0, z1], showspikes=False,
+                                                showbackground=True, backgroundcolor='#1b1f2a',
+                                                gridcolor='#2b3242', zerolinecolor='#444',
+                                                tickfont=dict(color='#c2c7cf'), titlefont=dict(color='#c2c7cf')
+                                            ),
+                                            aspectmode='data',
                                             camera=dict(
-                                                eye=dict(x=1.5, y=1.5, z=1.3)
+                                                eye=dict(x=1.8, y=1.8, z=1.2),
+                                                up=dict(x=0, y=0, z=1),
+                                                projection=dict(type='perspective')
                                             )
                                         ),
+                                        scene_dragmode='orbit',
                                         height=700,
                                         showlegend=True
                                     )
 
-                                    # Display the figure
-                                    st.plotly_chart(fig, use_container_width=True)
+                                    # Display the figure with smoother config
+                                    st.plotly_chart(
+                                        fig,
+                                        use_container_width=True,
+                                        config={
+                                            'displaylogo': False,
+                                            'scrollZoom': True,
+                                            'responsive': True
+                                        }
+                                    )
 
                                     # Display regression statistics
                                     st.markdown("### 📊 3D OLS Regression Statistics")

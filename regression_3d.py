@@ -76,15 +76,17 @@ class RegressionSummary:
             self.f_statistic = np.inf
             self.f_pvalue = 0.0
 
-        # Log-Likelihood (assuming normal errors)
-        if self.mse_residual > 0:
-            self.log_likelihood = -0.5 * n * (np.log(2 * np.pi) + np.log(self.mse_residual) + 1)
+        # Log-Likelihood (assuming normal errors) — use sigma^2_ML = RSS / n for statsmodels parity
+        if self.ss_residual > 0:
+            sigma2_mle = self.ss_residual / n
+            self.log_likelihood = -0.5 * n * (np.log(2 * np.pi) + np.log(sigma2_mle) + 1)
         else:
             self.log_likelihood = np.inf
 
-        # AIC and BIC
-        self.aic = -2 * self.log_likelihood + 2 * (k + 1)
-        self.bic = -2 * self.log_likelihood + np.log(n) * (k + 1)
+        # AIC and BIC (p = number of parameters = k predictors + intercept)
+        p = k + 1
+        self.aic = -2 * self.log_likelihood + 2 * p
+        self.bic = -2 * self.log_likelihood + np.log(n) * p
 
         # Standard errors for coefficients
         self._calculate_coefficient_statistics()
@@ -138,13 +140,16 @@ class RegressionSummary:
         """Calculate diagnostic tests for residuals"""
         residuals = self.model.residuals
 
-        # Jarque-Bera test for normality
+        # Jarque-Bera and Omnibus (D’Agostino-Pearson) normality tests
         try:
-            from scipy.stats import jarque_bera
+            from scipy.stats import jarque_bera, normaltest
             self.jb_statistic, self.jb_pvalue = jarque_bera(residuals)
-        except:
+            self.omni_statistic, self.omni_pvalue = normaltest(residuals)
+        except Exception:
             self.jb_statistic = np.nan
             self.jb_pvalue = np.nan
+            self.omni_statistic = np.nan
+            self.omni_pvalue = np.nan
 
         # Durbin-Watson statistic (test for autocorrelation)
         diff_residuals = np.diff(residuals)
@@ -219,8 +224,8 @@ class RegressionSummary:
         summary.append("=" * 78)
 
         # Diagnostic statistics
-        summary.append(f"Omnibus:              {self.jb_statistic:>16.3f}   Durbin-Watson:       {self.durbin_watson:>10.3f}")
-        summary.append(f"Prob(Omnibus):        {self.jb_pvalue:>16.3f}   Jarque-Bera (JB):    {self.jb_statistic:>10.3f}")
+        summary.append(f"Omnibus:              {getattr(self, 'omni_statistic', np.nan):>16.3f}   Durbin-Watson:       {self.durbin_watson:>10.3f}")
+        summary.append(f"Prob(Omnibus):        {getattr(self, 'omni_pvalue', np.nan):>16.3f}   Jarque-Bera (JB):    {self.jb_statistic:>10.3f}")
         summary.append(f"Skew:                 {stats.skew(self.model.residuals):>16.3f}   Prob(JB):            {self.jb_pvalue:>10.3f}")
         summary.append(f"Kurtosis:             {stats.kurtosis(self.model.residuals, fisher=False):>16.3f}   Cond. No.            {self.condition_number:>10.1f}")
         summary.append("=" * 78)

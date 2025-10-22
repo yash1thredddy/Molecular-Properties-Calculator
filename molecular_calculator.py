@@ -415,9 +415,10 @@ class ThreeDOLSRegression:
             # Handle degenerate case (perfect multicollinearity)
             raise ValueError("X and Y variables are perfectly collinear")
 
-        # Calculate slope coefficients
+        # Calculate slope coefficients (from normal equations inversion)
+        # b1 = (Sb*Sd - Sc*Se)/D ; b2 = (Sa*Se - Sc*Sd)/D
         b1 = (Sd * Sb - Sc * Se) / denominator
-        b2 = (Sc * Sd - Sa * Se) / denominator
+        b2 = (Sa * Se - Sc * Sd) / denominator
 
         # Calculate intercept
         b0 = z_mean - b1 * x_mean - b2 * y_mean
