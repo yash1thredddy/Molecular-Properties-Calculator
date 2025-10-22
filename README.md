@@ -2,7 +2,7 @@
 
 A comprehensive Streamlit web application for calculating chemical and molecular properties from molecular structures (SMILES, InChI, InChI Key).
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](YOUR_STREAMLIT_CLOUD_URL_HERE)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://molecular-properties-calculator.streamlit.app/)
 
 ## 🚀 Features
 
@@ -79,7 +79,7 @@ A comprehensive Streamlit web application for calculating chemical and molecular
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/YOUR_USERNAME/molecular-properties-calculator.git
+git clone https://github.com/yash1threddy/molecular-properties-calculator.git
 cd molecular-properties-calculator
 ```
 
@@ -285,7 +285,7 @@ This verifies:
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/YOUR_USERNAME/molecular-properties-calculator/issues)
+- **Issues**: [GitHub Issues](https://github.com/yash1threddy/molecular-properties-calculator/issues)
 - **Documentation**: See the in-app "Information & Property Explanations" section
 - **API Status**: Run `python test_api_verification.py` to verify online services
 
