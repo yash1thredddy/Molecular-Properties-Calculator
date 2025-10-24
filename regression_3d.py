@@ -314,3 +314,230 @@ def perform_3d_regression(df: pd.DataFrame, x_col: str, y_col: str, z_col: str) 
     summary = RegressionSummary(model, x_col, y_col, z_col)
 
     return model, summary
+
+
+def _build_design_matrix(x: np.ndarray, y: np.ndarray, include_interaction: bool, include_quadratic: bool) -> np.ndarray:
+    """Build design matrix with optional interaction and quadratic terms."""
+    terms = [np.ones_like(x), x, y]
+    if include_interaction:
+        terms.append(x * y)
+    if include_quadratic:
+        terms.append(x * x)
+        terms.append(y * y)
+    return np.column_stack(terms)
+
+
+def _evaluate_3d_pair(
+    df: pd.DataFrame,
+    z_col: str,
+    x_col: str,
+    y_col: str,
+    *,
+    include_interaction: bool = False,
+    include_quadratic: bool = False,
+    cv_folds: int = 5,
+) -> Dict[str, Any]:
+    """
+    Evaluate a 3D OLS model Z ~ 1 + X + Y and return key metrics.
+
+    Uses the same conventions as RegressionSummary for llf/AIC/BIC.
+    """
+    # Drop rows with non-finite values in any of the 3 columns
+    sub = df[[z_col, x_col, y_col]].copy()
+    sub = sub.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(sub) < 3:
+        return {
+            'x': x_col, 'y': y_col, 'n': len(sub), 'ok': False,
+            'reason': 'insufficient_rows'
+        }
+
+    z = sub[z_col].to_numpy(dtype=float)
+    x = sub[x_col].to_numpy(dtype=float)
+    y = sub[y_col].to_numpy(dtype=float)
+
+    n = len(sub)
+    # Design matrix with intercept and optional terms
+    X = _build_design_matrix(x, y, include_interaction, include_quadratic)
+    p = X.shape[1]                      # number of parameters (incl. intercept)
+    k = p - 1                           # number of predictors
+
+    # Solve normal equations
+    XT = X.T
+    XTX = XT @ X
+    try:
+        XTX_inv = np.linalg.inv(XTX)
+    except np.linalg.LinAlgError:
+        return {
+            'x': x_col, 'y': y_col, 'n': n, 'ok': False,
+            'reason': 'singular_matrix'
+        }
+    beta = XTX_inv @ (XT @ z)
+    b0, b1, b2 = beta.tolist()
+
+    # Fitted and residuals
+    zhat = X @ beta
+    resid = z - zhat
+
+    # Sums of squares
+    zbar = np.mean(z)
+    ss_res = float(np.sum(resid ** 2))
+    ss_tot = float(np.sum((z - zbar) ** 2))
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    df_res = n - p
+    mse_res = ss_res / df_res if df_res > 0 else np.nan
+
+    # Coefficient SEs, t, p
+    se = np.sqrt(np.diag(mse_res * XTX_inv)) if np.isfinite(mse_res) else np.full(p, np.nan)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        tvals = beta / se
+    try:
+        pvals = 2 * (1 - stats.t.cdf(np.abs(tvals), df_res))
+    except Exception:
+        pvals = np.array([np.nan, np.nan, np.nan])
+
+    # F-statistic
+    ss_model = ss_tot - ss_res
+    mse_model = ss_model / k if k > 0 else np.nan
+    f_stat = (mse_model / mse_res) if (mse_res and mse_res > 0) else np.nan
+    f_pvalue = 1 - stats.f.cdf(f_stat, k, df_res) if np.isfinite(f_stat) else np.nan
+
+    # Log-likelihood (use MLE sigma^2 = RSS / n)
+    sigma2_mle = ss_res / n
+    llf = -0.5 * n * (np.log(2 * np.pi) + np.log(sigma2_mle) + 1) if sigma2_mle > 0 else -np.inf
+    aic = -2 * llf + 2 * p
+    bic = -2 * llf + np.log(n) * p
+
+    # Simple collinearity signal: VIF for X and Y using r_xy
+    r_xy = np.corrcoef(x, y)[0, 1]
+    r_xy2 = r_xy * r_xy
+    with np.errstate(divide='ignore', invalid='ignore'):
+        vif_x = float(1.0 / (1.0 - r_xy2)) if r_xy2 < 0.999999 else np.inf
+        vif_y = vif_x
+
+    # K-fold CV RMSE (deterministic split by index to avoid RNG dependency)
+    rmse_cv = np.nan
+    if cv_folds and cv_folds >= 3 and n > cv_folds:
+        fold_sizes = np.full(cv_folds, n // cv_folds, dtype=int)
+        fold_sizes[: n % cv_folds] += 1
+        indices = np.arange(n)
+        current = 0
+        se_sum = 0.0
+        m_sum = 0
+        for fold_size in fold_sizes:
+            start, stop = current, current + fold_size
+            test_idx = indices[start:stop]
+            train_idx = np.concatenate([indices[:start], indices[stop:]])
+            current = stop
+
+            X_tr, z_tr = X[train_idx], z[train_idx]
+            X_te, z_te = X[test_idx], z[test_idx]
+            XT_tr = X_tr.T
+            XTX_tr = XT_tr @ X_tr
+            try:
+                beta_tr = np.linalg.inv(XTX_tr) @ (XT_tr @ z_tr)
+            except np.linalg.LinAlgError:
+                beta_tr = None
+            if beta_tr is None:
+                continue
+            z_pred = X_te @ beta_tr
+            err = z_te - z_pred
+            se_sum += float(np.sum(err ** 2))
+            m_sum += len(z_te)
+        if m_sum > 0:
+            rmse_cv = float(np.sqrt(se_sum / m_sum))
+
+    model_spec = 'linear'
+    if include_interaction and include_quadratic:
+        model_spec = 'linear + xy + x2+y2'
+    elif include_interaction:
+        model_spec = 'linear + xy'
+    elif include_quadratic:
+        model_spec = 'linear + x2+y2'
+
+    return {
+        'x': x_col,
+        'y': y_col,
+        'n': n,
+        'ok': True,
+        # Return first three coefficients if present for compatibility
+        'b0': float(beta[0]) if p >= 1 else np.nan,
+        'b1': float(beta[1]) if p >= 2 else np.nan,
+        'b2': float(beta[2]) if p >= 3 else np.nan,
+        'se_b0': float(se[0]) if p >= 1 else np.nan,
+        'se_b1': float(se[1]) if p >= 2 else np.nan,
+        'se_b2': float(se[2]) if p >= 3 else np.nan,
+        't_b0': float(tvals[0]) if p >= 1 else np.nan,
+        't_b1': float(tvals[1]) if p >= 2 else np.nan,
+        't_b2': float(tvals[2]) if p >= 3 else np.nan,
+        'p_b0': float(pvals[0]) if p >= 1 else np.nan,
+        'p_b1': float(pvals[1]) if p >= 2 else np.nan,
+        'p_b2': float(pvals[2]) if p >= 3 else np.nan,
+        'r2': float(r2),
+        'adj_r2': float(1 - (1 - r2) * ((n - 1) / df_res)) if df_res > 0 else float(r2),
+        'f_stat': float(f_stat) if np.isfinite(f_stat) else np.nan,
+        'f_pvalue': float(f_pvalue) if np.isfinite(f_pvalue) else np.nan,
+        'llf': float(llf), 'aic': float(aic), 'bic': float(bic),
+        'rmse_cv': rmse_cv,
+        'vif_x': float(vif_x), 'vif_y': float(vif_y),
+        'r_xy': float(r_xy),
+        'model_spec': model_spec,
+        'p_params': int(p)
+    }
+
+
+def suggest_best_3d_pairs(
+    df: pd.DataFrame,
+    z_col: str,
+    candidate_cols: Optional[list] = None,
+    top_n: int = 5,
+    *,
+    include_interaction: bool = False,
+    include_quadratic: bool = False,
+    cv_folds: int = 5,
+) -> Tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
+    """
+    Suggest the best (X, Y) pairs for a given dependent variable Z.
+
+    - Considers numeric columns (or `candidate_cols` if provided), excluding `z_col`.
+    - Scores pairs primarily by highest adjusted R^2, then lowest BIC.
+    - Returns a DataFrame of top pairs (proof) and the top suggestion dict.
+    """
+    # Identify numeric candidate columns
+    if candidate_cols is None:
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        candidates = [c for c in numeric_cols if c != z_col]
+    else:
+        candidates = [c for c in candidate_cols if c != z_col]
+
+    # Evaluate all pairs
+    results = []
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            x_col, y_col = candidates[i], candidates[j]
+            res = _evaluate_3d_pair(
+                df, z_col, x_col, y_col,
+                include_interaction=include_interaction,
+                include_quadratic=include_quadratic,
+                cv_folds=cv_folds,
+            )
+            if res.get('ok'):
+                results.append(res)
+
+    if not results:
+        return pd.DataFrame(), None
+
+    res_df = pd.DataFrame(results)
+
+    # Rank: highest adj_r2, then lowest bic, then lowest rmse_cv
+    res_df = res_df.sort_values(
+        by=['adj_r2', 'bic', 'rmse_cv'], ascending=[False, True, True]
+    ).reset_index(drop=True)
+    top = res_df.iloc[0].to_dict() if len(res_df) > 0 else None
+
+    # Keep only essential proof columns for display
+    proof_cols = [
+        'x', 'y', 'n', 'model_spec', 'p_params', 'adj_r2', 'r2', 'rmse_cv', 'aic', 'bic',
+        'f_stat', 'f_pvalue', 'p_b1', 'p_b2', 'vif_x', 'vif_y', 'r_xy'
+    ]
+    proof_df = res_df[proof_cols].copy()
+    return proof_df.head(top_n), top
