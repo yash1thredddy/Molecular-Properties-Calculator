@@ -2278,6 +2278,29 @@ elif input_mode == "3D Regression Analysis":
                         "END OF REPORT",
                         "=" * 80
                     ]
+                    # Append fitted plane equation and coefficient significance before summary
+                    _eq = model.get_equation_string(decimals=4)
+                    _eq_disp = _eq.replace('Z', z_var).replace('X', x_var).replace('Y', y_var)
+                    _sig_header = f"{'Variable':>12s} {'Coef':>12s} {'StdErr':>12s} {'t':>8s} {'P>|t|':>10s} {'Sig':>6s} {'[0.025':>10s} {'0.975]':>10s}"
+                    _sig_rows = []
+                    for _name, _coef, _se, _t, _p, _ci in [
+                        ('Intercept', model.b0, summary.se_b0, summary.t_b0, summary.p_b0, summary.ci_b0),
+                        (x_var,      model.b1, summary.se_b1, summary.t_b1, summary.p_b1, summary.ci_b1),
+                        (y_var,      model.b2, summary.se_b2, summary.t_b2, summary.p_b2, summary.ci_b2),
+                    ]:
+                        _sig = '***' if _p < 0.001 else '**' if _p < 0.01 else '*' if _p < 0.05 else 'ns'
+                        _sig_rows.append(f"{_name:>12s} {(_coef):>12.4f} {(_se):>12.4f} {(_t):>8.3f} {(_p):>10.3e} {(_sig):>6s} {(_ci[0]):>10.3f} {(_ci[1]):>10.3f}")
+                    _section_lines = [
+                        "\nFITTED PLANE EQUATION",
+                        "-" * 80,
+                        _eq_disp,
+                        "\nSTATISTICAL SIGNIFICANCE OF COEFFICIENTS",
+                        "-" * 80,
+                        _sig_header,
+                    ] + _sig_rows
+                    # Insert the new section before the long stats summary (at index 6)
+                    for _line in reversed(_section_lines):
+                        report_lines.insert(6, _line)
                     report_text = "\n".join(report_lines)
 
                     col1, col2 = st.columns(2)
@@ -2476,6 +2499,29 @@ elif input_mode == "3D Regression Analysis":
                         "END OF REPORT",
                         "=" * 80
                     ]
+                    # Append fitted plane equation and coefficient significance before summary
+                    _eq = model.get_equation_string(decimals=4)
+                    _eq_disp = _eq.replace('Z', z_var).replace('X', x_var).replace('Y', y_var)
+                    _sig_header = f"{'Variable':>12s} {'Coef':>12s} {'StdErr':>12s} {'t':>8s} {'P>|t|':>10s} {'Sig':>6s} {'[0.025':>10s} {'0.975]':>10s}"
+                    _sig_rows = []
+                    for _name, _coef, _se, _t, _p, _ci in [
+                        ('Intercept', model.b0, summary.se_b0, summary.t_b0, summary.p_b0, summary.ci_b0),
+                        (x_var,      model.b1, summary.se_b1, summary.t_b1, summary.p_b1, summary.ci_b1),
+                        (y_var,      model.b2, summary.se_b2, summary.t_b2, summary.p_b2, summary.ci_b2),
+                    ]:
+                        _sig = '***' if _p < 0.001 else '**' if _p < 0.01 else '*' if _p < 0.05 else 'ns'
+                        _sig_rows.append(f"{_name:>12s} {(_coef):>12.4f} {(_se):>12.4f} {(_t):>8.3f} {(_p):>10.3e} {(_sig):>6s} {(_ci[0]):>10.3f} {(_ci[1]):>10.3f}")
+                    _section_lines = [
+                        "\nFITTED PLANE EQUATION",
+                        "-" * 80,
+                        _eq_disp,
+                        "\nSTATISTICAL SIGNIFICANCE OF COEFFICIENTS",
+                        "-" * 80,
+                        _sig_header,
+                    ] + _sig_rows
+                    # Insert the new section before the long stats summary (at index 6)
+                    for _line in reversed(_section_lines):
+                        report_lines.insert(6, _line)
                     report_text = "\n".join(report_lines)
                     col1, col2 = st.columns(2)
                     with col1:
