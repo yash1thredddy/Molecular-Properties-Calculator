@@ -2018,6 +2018,7 @@ elif input_mode == "3D Regression Analysis":
                     st.session_state['reg3d_model'] = model
                     st.session_state['reg3d_summary'] = summary
                     st.session_state['reg3d_vars'] = (x_var, y_var, z_var)
+                    # initialize camera state on fresh run (no presets now)
 
                     st.success("✅ Regression analysis complete!")
 
@@ -2135,6 +2136,14 @@ elif input_mode == "3D Regression Analysis":
                         hovertemplate='Fitted Plane<br>Predicted Value<extra></extra>'
                     ))
 
+                    # View controls
+                    # Simple projection toggle (keeps previous behavior otherwise)
+                    ortho = st.checkbox("Orthographic projection", value=False, key="reg3d_ortho")
+                    camera_dict = dict(
+                        eye=dict(x=1.5, y=1.5, z=1.3),
+                        up=dict(x=0, y=0, z=1),
+                        projection=dict(type='orthographic' if ortho else 'perspective')
+                    )
                     # Update layout
                     fig.update_layout(
                         title=f"3D OLS Regression: {z_var} vs {x_var} and {y_var}",
@@ -2142,11 +2151,7 @@ elif input_mode == "3D Regression Analysis":
                             xaxis_title=x_var,
                             yaxis_title=y_var,
                             zaxis_title=z_var,
-                            camera=dict(
-                                eye=dict(x=1.5, y=1.5, z=1.3),
-                                up=dict(x=0, y=0, z=1),
-                                projection=dict(type='perspective')
-                            ),
+                            camera=camera_dict,
                             aspectmode='data'
                         ),
                         height=700,
@@ -2235,7 +2240,7 @@ elif input_mode == "3D Regression Analysis":
                         ))
                         fig_pred.update_layout(height=400)
                         st.plotly_chart(fig_pred, use_container_width=True)
-                        st.caption("Points should lie close to the diagonal line for good fit")
+                    st.caption("Points should lie close to the diagonal line for good fit")
 
                     # Diagnostic tests summary
                     st.markdown("### 🔬 Diagnostic Tests")
@@ -2294,6 +2299,8 @@ elif input_mode == "3D Regression Analysis":
                             file_name=f"3D_OLS_Statistics_{z_var}.csv",
                             mime="text/csv"
                         )
+
+                    # Three.js view removed per request
 
                 except Exception as e:
                     st.error(f"Error displaying regression results: {str(e)}")
@@ -2371,17 +2378,21 @@ elif input_mode == "3D Regression Analysis":
                                                      for x, y, z, r in zip(model.x, model.y, model.z, model.residuals)],
                                                hovertemplate='%{text}<extra></extra>'))
                     fig.add_trace(go.Surface(x=X_mesh, y=Y_mesh, z=Z_mesh, opacity=0.7, colorscale='Blues', showscale=False, name='Fitted Plane', hovertemplate='Fitted Plane<br>Predicted Value<extra></extra>'))
+                    # Simple projection toggle (cached render path)
+                    ortho_c = st.checkbox("Orthographic projection", value=False, key="reg3d_ortho_cached")
+                    camera_cached = dict(
+                        eye=dict(x=1.5, y=1.5, z=1.3),
+                        up=dict(x=0, y=0, z=1),
+                        projection=dict(type='orthographic' if ortho_c else 'perspective')
+                    )
+
                     fig.update_layout(
                         title=f"3D OLS Regression: {z_var} vs {x_var} and {y_var}",
                         scene=dict(
                             xaxis_title=x_var,
                             yaxis_title=y_var,
                             zaxis_title=z_var,
-                            camera=dict(
-                                eye=dict(x=1.5, y=1.5, z=1.3),
-                                up=dict(x=0, y=0, z=1),
-                                projection=dict(type='perspective')
-                            ),
+                            camera=camera_cached,
                             aspectmode='data'
                         ),
                         height=700,
@@ -2473,6 +2484,8 @@ elif input_mode == "3D Regression Analysis":
                         stats_dict = summary.get_statistics_dict()
                         stats_df = pd.DataFrame([stats_dict])
                         st.download_button(label="📊 Download Statistics (CSV)", data=stats_df.to_csv(index=False), file_name=f"3D_OLS_Statistics_{z_var}.csv", mime="text/csv")
+
+                    # Three.js view removed per request
                 except Exception as e:
                     st.error(f"Error displaying regression results: {str(e)}")
                     import traceback
