@@ -902,7 +902,11 @@ elif input_mode == "Batch Processing":
                 progress_bar.progress(1.0)
 
                 # Store results in session state
-                st.session_state.batch_results_df = results_df
+                # batch_results_df should contain ALL newly calculated columns (properties + LEIs)
+                # Extract only the newly calculated columns from final_df
+                original_columns = set(df.columns)
+                new_columns = [col for col in final_df.columns if col not in original_columns]
+                st.session_state.batch_results_df = final_df[new_columns] if new_columns else pd.DataFrame()
                 st.session_state.batch_final_df = final_df
 
                 status_text.text("✅ Processing complete!")
@@ -921,21 +925,33 @@ elif input_mode == "Batch Processing":
             st.subheader("Results")
             st.dataframe(st.session_state.batch_final_df, use_container_width=True)
 
-            # Summary statistics
+            # Summary statistics - show stats for all newly calculated columns
             if not st.session_state.batch_results_df.empty:
-                st.subheader("Summary Statistics")
+                st.subheader("📊 Summary Statistics")
+                st.markdown("*Statistics for newly calculated properties and LEIs*")
                 summary = st.session_state.batch_results_df.describe()
                 st.dataframe(summary, use_container_width=True)
 
-                # Visualizations
-                st.subheader("📊 Property Visualizations")
+                # Automatic Distribution Plots
+                st.subheader("📈 Quick Distribution Analysis")
 
-                # Create plots for key properties if they exist
-                plot_properties = ['QED', 'LogP', 'Molecular_Weight', 'TPSA']
-                available_props = [prop for prop in plot_properties if prop in st.session_state.batch_results_df.columns]
+                # Create plots for key properties/LEIs if they exist in the newly calculated columns
+                # Prioritize showing what was actually calculated
+                priority_properties = ['QED', 'LogP', 'Molecular_Weight', 'TPSA']
+                lei_properties = ['BEI', 'SEI', 'NSEI', 'NBEI', 'nBEI', 'mBEI', 'LEH', 'LEP']
+
+                # Get available properties from what was calculated
+                available_props = []
+                for prop in priority_properties:
+                    if prop in st.session_state.batch_results_df.columns:
+                        available_props.append(prop)
+
+                # Add LEIs that were calculated (up to 4 total plots)
+                for lei in lei_properties:
+                    if lei in st.session_state.batch_results_df.columns and len(available_props) < 4:
+                        available_props.append(lei)
 
                 if available_props:
-                    st.subheader("🔍 Distribution Analysis")
                     cols = st.columns(2)
 
                     # Color palette for histograms
@@ -986,8 +1002,10 @@ elif input_mode == "Batch Processing":
                             )
                             st.plotly_chart(fig, use_container_width=True)
 
-                # Enhanced Interactive Visualization System
-                # Include ALL numeric columns from final_df (original + calculated)
+            # Enhanced Interactive Visualization System
+            # Always show this section - it includes ALL numeric columns from final_df (original + calculated)
+            if (st.session_state.batch_final_df is not None and
+                st.session_state.current_batch_file == uploaded_file.name):
                 numeric_cols = st.session_state.batch_final_df.select_dtypes(include=[np.number]).columns.tolist()
                 all_cols = st.session_state.batch_final_df.columns.tolist()
 
