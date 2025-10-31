@@ -417,30 +417,46 @@ class LigandEfficiencyCalculator:
         else:
             return {}  # pKi is required
 
-        # Get available values from row
-        mw = row[detected_columns['mw']] if detected_columns['mw'] and detected_columns['mw'] in row.index else None
-        tpsa = row[detected_columns['tpsa']] if detected_columns['tpsa'] and detected_columns['tpsa'] in row.index else None
-        heavy_atoms = row[detected_columns['heavy_atoms']] if detected_columns['heavy_atoms'] and detected_columns['heavy_atoms'] in row.index else None
+        # Get available values from row - ensure scalar extraction
+        mw = None
+        if detected_columns['mw'] and detected_columns['mw'] in row.index:
+            val = row[detected_columns['mw']]
+            # Ensure scalar value
+            if isinstance(val, pd.Series):
+                val = val.iloc[0] if len(val) > 0 else None
+            mw = None if val is None or pd.isna(val) else val
+
+        tpsa = None
+        if detected_columns['tpsa'] and detected_columns['tpsa'] in row.index:
+            val = row[detected_columns['tpsa']]
+            # Ensure scalar value
+            if isinstance(val, pd.Series):
+                val = val.iloc[0] if len(val) > 0 else None
+            tpsa = None if val is None or pd.isna(val) else val
+
+        heavy_atoms = None
+        if detected_columns['heavy_atoms'] and detected_columns['heavy_atoms'] in row.index:
+            val = row[detected_columns['heavy_atoms']]
+            # Ensure scalar value
+            if isinstance(val, pd.Series):
+                val = val.iloc[0] if len(val) > 0 else None
+            heavy_atoms = None if val is None or pd.isna(val) else val
 
         # Get SMILES if available (for calculating missing values)
         smiles = None
         if detected_columns['smiles'] and detected_columns['smiles'] in row.index:
-            smiles = row[detected_columns['smiles']]
+            val = row[detected_columns['smiles']]
+            # Ensure scalar value
+            if isinstance(val, pd.Series):
+                val = val.iloc[0] if len(val) > 0 else None
+            smiles = None if val is None or pd.isna(val) else val
 
         # Calculate missing dependencies from SMILES if needed
         polar_atoms = None
-        if calculate_missing and smiles and pd.notna(smiles):
-            if heavy_atoms is None or pd.isna(heavy_atoms):
+        if calculate_missing and smiles is not None:
+            if heavy_atoms is None:
                 heavy_atoms = LigandEfficiencyCalculator.count_heavy_atoms(smiles)
             polar_atoms = LigandEfficiencyCalculator.count_polar_atoms(smiles)
-
-        # Handle NaN values
-        if mw is not None and pd.isna(mw):
-            mw = None
-        if tpsa is not None and pd.isna(tpsa):
-            tpsa = None
-        if heavy_atoms is not None and pd.isna(heavy_atoms):
-            heavy_atoms = None
 
         # Calculate LEIs
         all_leis = LigandEfficiencyCalculator.calculate_lei_values(
@@ -515,8 +531,12 @@ class LigandEfficiencyCalculator:
         # Create results DataFrame
         lei_df = pd.DataFrame(lei_results)
 
+        # Remove any columns from df that will be added by lei_df to avoid duplicates
+        columns_to_keep = [col for col in df.columns if col not in lei_df.columns]
+        df_clean = df[columns_to_keep]
+
         # Combine with original DataFrame
-        result_df = pd.concat([df, lei_df], axis=1)
+        result_df = pd.concat([df_clean, lei_df], axis=1)
 
         status = {
             'success': True,

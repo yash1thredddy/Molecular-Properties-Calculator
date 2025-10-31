@@ -840,7 +840,12 @@ elif input_mode == "Batch Processing":
 
                 # Create results DataFrame
                 results_df = pd.DataFrame(results)
-                final_df = pd.concat([df, results_df], axis=1)
+
+                # Remove any columns from df that will be added by results_df to avoid duplicates
+                columns_to_keep = [col for col in df.columns if col not in results_df.columns]
+                df_clean = df[columns_to_keep]
+
+                final_df = pd.concat([df_clean, results_df], axis=1)
 
                 # Calculate LEIs if selected
                 if st.session_state.batch_selected_leis:
