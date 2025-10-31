@@ -816,27 +816,61 @@ elif input_mode == "Batch Processing":
                 results = []
                 total_rows = len(df)
 
+                # Determine which properties need to be calculated
+                # Don't calculate properties that already exist in the uploaded file
+                existing_columns = set(df.columns)
+
+                # Determine properties to calculate based on user selection
+                if calc_all_batch:
+                    # Calculate all properties mode
+                    should_calc_properties = True
+                    filter_mode = 'all'
+                elif st.session_state.batch_selected_properties:
+                    # Only calculate selected properties that don't already exist
+                    properties_to_calculate = st.session_state.batch_selected_properties - existing_columns
+                    should_calc_properties = len(properties_to_calculate) > 0
+                    filter_mode = 'selected'
+                else:
+                    # No properties selected (only LEIs)
+                    properties_to_calculate = set()
+                    should_calc_properties = False
+                    filter_mode = 'none'
+
                 # Calculate regular molecular properties
                 for idx, row in df.iterrows():
-                    smiles = row[smiles_col]
+                    if should_calc_properties:
+                        smiles = row[smiles_col]
 
-                    # Auto-detect and convert if needed
-                    input_format = MolecularCalculator.detect_input_format(str(smiles)) if pd.notna(smiles) else 'smiles'
-                    if input_format != 'smiles':
-                        smiles = MolecularCalculator.convert_to_smiles(str(smiles), input_format, enable_online_lookup)
+                        # Auto-detect and convert if needed
+                        input_format = MolecularCalculator.detect_input_format(str(smiles)) if pd.notna(smiles) else 'smiles'
+                        if input_format != 'smiles':
+                            smiles = MolecularCalculator.convert_to_smiles(str(smiles), input_format, enable_online_lookup)
 
-                    properties = MolecularCalculator.calculate_molecular_properties(smiles) if pd.notna(smiles) else {}
+                        # Calculate all properties first
+                        properties = MolecularCalculator.calculate_molecular_properties(smiles) if pd.notna(smiles) else {}
 
-                    # Filter properties based on selection - only if properties is not None/empty
-                    if properties and not calc_all_batch and st.session_state.batch_selected_properties:
-                        properties = {k: v for k, v in properties.items() if k in st.session_state.batch_selected_properties}
+                        # Filter based on what should be calculated
+                        if properties:
+                            if filter_mode == 'all':
+                                # Remove properties that already exist in the file
+                                properties = {k: v for k, v in properties.items() if k not in existing_columns}
+                            elif filter_mode == 'selected' and properties_to_calculate:
+                                # Only keep selected properties that should be calculated
+                                properties = {k: v for k, v in properties.items() if k in properties_to_calculate}
+                            else:
+                                properties = {}
+                    else:
+                        properties = {}
 
                     results.append(properties)
 
                     # Update progress
                     progress = (idx + 1) / total_rows
                     progress_bar.progress(progress * 0.7)  # First 70% for regular properties
-                    status_text.text(f"Calculating properties: {idx + 1}/{total_rows}")
+                    if should_calc_properties:
+                        status_text.text(f"Calculating properties: {idx + 1}/{total_rows}")
+                    else:
+                        status_text.text(f"Processing rows: {idx + 1}/{total_rows}")
 
                 # Create results DataFrame
                 results_df = pd.DataFrame(results)
