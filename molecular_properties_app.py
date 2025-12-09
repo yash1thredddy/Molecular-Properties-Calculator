@@ -23,6 +23,59 @@ from ligand_efficiency import (
 )
 
 
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def detect_name_column(df: pd.DataFrame, smiles_col: str) -> str:
+    """
+    Detect name/ID column from common patterns.
+    
+    Args:
+        df: DataFrame to search
+        smiles_col: SMILES column name to exclude
+        
+    Returns:
+        Column name or None if no suitable column found
+    """
+    # Check common name column patterns
+    for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
+        if col_candidate in df.columns:
+            return col_candidate
+    
+    # Fallback to first non-numeric object column (excluding SMILES)
+    for col in df.columns:
+        if col != smiles_col and df[col].dtype == 'object':
+            return col
+    
+    return None
+
+
+def prepare_customdata(df: pd.DataFrame, smiles_col: str, name_col: str = None) -> tuple:
+    """
+    Prepare customdata for structure viewer.
+    
+    Args:
+        df: DataFrame to prepare
+        smiles_col: SMILES column name
+        name_col: Optional name/ID column name
+        
+    Returns:
+        Tuple of (modified_df, custom_data_columns)
+    """
+    # Add row index as fallback
+    if '_row_index' not in df.columns:
+        df['_row_index'] = range(len(df))
+    
+    # Build custom_data list
+    if name_col:
+        custom_data = [smiles_col, name_col, '_row_index']
+    else:
+        custom_data = [smiles_col, '_row_index']
+    
+    return df, custom_data
+
+
 # Utility: add colored 3D axis arrows (X=red, Y=green, Z=blue)
 def _add_axis_arrows(fig: go.Figure, x_range, y_range, z_range, label: bool = True):
     """Add axis arrows to a Plotly 3D figure for better orientation.
@@ -383,8 +436,12 @@ elif input_mode == "Batch Processing":
         smiles_col = MolecularCalculator.detect_smiles_column(df)
 
         # Store SMILES column in session state for structure viewer
-        if 'batch_smiles_col' not in st.session_state or st.session_state.current_batch_file != uploaded_file.name:
+        # Check if file changed or first time initialization
+        if ('batch_smiles_col' not in st.session_state or 
+            'current_batch_file' not in st.session_state or 
+            st.session_state.current_batch_file != uploaded_file.name):
             st.session_state.batch_smiles_col = smiles_col
+            st.session_state.current_batch_file = uploaded_file.name
         
         # Data preprocessing for batch mode (avoid converting SMILES column)
         original_dtypes_batch = df.dtypes.to_dict()
@@ -1205,28 +1262,11 @@ elif input_mode == "Batch Processing":
                                 # Prepare customdata for structure viewer
                                 if has_smiles:
                                     smiles_col_name = st.session_state.batch_smiles_col
-                                    # Detect name/ID column for better UX
-                                    name_col = None
-                                    for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                        if col_candidate in plot_data.columns:
-                                            name_col = col_candidate
-                                            break
-                                    # If no name column found, use first non-numeric column or fall back to index
-                                    if not name_col:
-                                        for col in plot_data.columns:
-                                            if col != smiles_col_name and plot_data[col].dtype == 'object':
-                                                name_col = col
-                                                break
-                                    
-                                    # Add row index as fallback
-                                    if '_row_index' not in plot_data.columns:
-                                        plot_data['_row_index'] = range(len(plot_data))
-                                    
-                                    # customdata: [SMILES, name, row_index]
-                                    if name_col:
-                                        color_param['custom_data'] = [smiles_col_name, name_col, '_row_index']
-                                    else:
-                                        color_param['custom_data'] = [smiles_col_name, '_row_index']
+                                    # Detect name/ID column using helper function
+                                    name_col = detect_name_column(plot_data, smiles_col_name)
+                                    # Prepare customdata using helper function
+                                    plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
+                                    color_param['custom_data'] = custom_data_cols
                                 
                                 fig = px.scatter(
                                     plot_data,
@@ -1324,25 +1364,11 @@ elif input_mode == "Batch Processing":
                                 # Prepare customdata for structure viewer (only if showing points)
                                 if show_points and has_smiles:
                                     smiles_col_name = st.session_state.batch_smiles_col
-                                    # Detect name/ID column
-                                    name_col = None
-                                    for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                        if col_candidate in plot_data.columns:
-                                            name_col = col_candidate
-                                            break
-                                    if not name_col:
-                                        for col in plot_data.columns:
-                                            if col != smiles_col_name and plot_data[col].dtype == 'object':
-                                                name_col = col
-                                                break
-                                    
-                                    if '_row_index' not in plot_data.columns:
-                                        plot_data['_row_index'] = range(len(plot_data))
-                                    
-                                    if name_col:
-                                        color_param['custom_data'] = [smiles_col_name, name_col, '_row_index']
-                                    else:
-                                        color_param['custom_data'] = [smiles_col_name, '_row_index']
+                                    # Detect name/ID column using helper function
+                                    name_col = detect_name_column(plot_data, smiles_col_name)
+                                    # Prepare customdata using helper function
+                                    plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
+                                    color_param['custom_data'] = custom_data_cols
                                 
                                 fig = px.box(
                                     plot_data,
@@ -1356,25 +1382,11 @@ elif input_mode == "Batch Processing":
                                 # Prepare customdata for structure viewer (only if showing points)
                                 if show_points and has_smiles:
                                     smiles_col_name = st.session_state.batch_smiles_col
-                                    # Detect name/ID column
-                                    name_col = None
-                                    for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                        if col_candidate in plot_data.columns:
-                                            name_col = col_candidate
-                                            break
-                                    if not name_col:
-                                        for col in plot_data.columns:
-                                            if col != smiles_col_name and plot_data[col].dtype == 'object':
-                                                name_col = col
-                                                break
-                                    
-                                    if '_row_index' not in plot_data.columns:
-                                        plot_data['_row_index'] = range(len(plot_data))
-                                    
-                                    if name_col:
-                                        color_param['custom_data'] = [smiles_col_name, name_col, '_row_index']
-                                    else:
-                                        color_param['custom_data'] = [smiles_col_name, '_row_index']
+                                    # Detect name/ID column using helper function
+                                    name_col = detect_name_column(plot_data, smiles_col_name)
+                                    # Prepare customdata using helper function
+                                    plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
+                                    color_param['custom_data'] = custom_data_cols
                                 
                                 fig = px.violin(
                                     plot_data,
@@ -1398,11 +1410,12 @@ elif input_mode == "Batch Processing":
                             elif selected_chart == '3D OLS Regression' and x_axis and y_axis and z_axis:
                                 # Perform 3D OLS Regression
                                 try:
-                                    # Create OLS regression model
+                                    # Create OLS regression model with original indices for tracking
                                     ols_model = ThreeDOLSRegression(
                                         x=plot_data[x_axis],
                                         y=plot_data[y_axis],
-                                        z=plot_data[z_axis]
+                                        z=plot_data[z_axis],
+                                        original_indices=plot_data.index.to_numpy()
                                     )
 
                                     # Get statistics
@@ -1419,20 +1432,17 @@ elif input_mode == "Batch Processing":
                                     customdata_3d = None
                                     if has_smiles:
                                         smiles_col_name = st.session_state.batch_smiles_col
-                                        # Detect name/ID column
-                                        name_col = None
-                                        for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                            if col_candidate in plot_data.columns:
-                                                name_col = col_candidate
-                                                break
-                                        if not name_col:
-                                            for col in plot_data.columns:
-                                                if col != smiles_col_name and plot_data[col].dtype == 'object':
-                                                    name_col = col
-                                                    break
+                                        # Detect name/ID column using helper function
+                                        name_col = detect_name_column(plot_data, smiles_col_name)
                                         
                                         # Get SMILES for the valid data points used in regression
-                                        valid_indices = plot_data.index[:len(ols_model.x)]
+                                        # Use the valid_indices tracked by the OLS model
+                                        valid_indices = ols_model.valid_indices
+                                        
+                                        # Verify length matches
+                                        if len(valid_indices) != len(ols_model.x):
+                                            st.error(f"Data integrity error: valid_indices length ({len(valid_indices)}) != model data length ({len(ols_model.x)})")
+                                        
                                         smiles_values = plot_data.loc[valid_indices, smiles_col_name].values
                                         
                                         if name_col:
@@ -1608,17 +1618,8 @@ elif input_mode == "Batch Processing":
                                     if has_smiles:
                                         # Show hint about structure viewer
                                         st.markdown(get_structure_viewer_hint(), unsafe_allow_html=True)
-                                        # Detect the name column
-                                        detected_name_col = None
-                                        for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                            if col_candidate in plot_data.columns:
-                                                detected_name_col = col_candidate
-                                                break
-                                        if not detected_name_col:
-                                            for col in plot_data.columns:
-                                                if col != st.session_state.batch_smiles_col and plot_data[col].dtype == 'object':
-                                                    detected_name_col = col
-                                                    break
+                                        # Detect the name column using helper function
+                                        detected_name_col = detect_name_column(plot_data, st.session_state.batch_smiles_col)
                                         
                                         components.html(
                                             get_structure_viewer_component(
@@ -1707,18 +1708,8 @@ elif input_mode == "Batch Processing":
                                 if has_smiles and selected_chart in ['Scatter Plot', 'Box Plot', 'Violin Plot']:
                                     # Show hint about structure viewer
                                     st.markdown(get_structure_viewer_hint(), unsafe_allow_html=True)
-                                    # Inject the structure viewer component with column names
-                                    # Detect the name column that was used
-                                    detected_name_col = None
-                                    for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                        if col_candidate in plot_data.columns:
-                                            detected_name_col = col_candidate
-                                            break
-                                    if not detected_name_col:
-                                        for col in plot_data.columns:
-                                            if col != st.session_state.batch_smiles_col and plot_data[col].dtype == 'object':
-                                                detected_name_col = col
-                                                break
+                                    # Detect the name column using helper function
+                                    detected_name_col = detect_name_column(plot_data, st.session_state.batch_smiles_col)
                                     
                                     components.html(
                                         get_structure_viewer_component(
@@ -1774,8 +1765,12 @@ elif input_mode == "Data Visualization":
 
         # Detect SMILES column for structure viewer
         viz_smiles_col = MolecularCalculator.detect_smiles_column(viz_df)
-        if 'viz_smiles_col' not in st.session_state:
+        # Update session state when file changes or first time
+        if ('viz_smiles_col' not in st.session_state or 
+            'current_viz_file' not in st.session_state or 
+            st.session_state.current_viz_file != viz_uploaded_file.name):
             st.session_state.viz_smiles_col = viz_smiles_col
+            st.session_state.current_viz_file = viz_uploaded_file.name
         
         # Data preprocessing: Convert string numbers to numeric
         st.subheader("Data Preprocessing")
@@ -1987,25 +1982,11 @@ elif input_mode == "Data Visualization":
                         # Prepare customdata for structure viewer
                         if has_smiles_viz:
                             smiles_col_name_viz = st.session_state.viz_smiles_col
-                            # Detect name/ID column
-                            name_col_viz = None
-                            for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                if col_candidate in plot_data_viz.columns:
-                                    name_col_viz = col_candidate
-                                    break
-                            if not name_col_viz:
-                                for col in plot_data_viz.columns:
-                                    if col != smiles_col_name_viz and plot_data_viz[col].dtype == 'object':
-                                        name_col_viz = col
-                                        break
-                            
-                            if '_row_index' not in plot_data_viz.columns:
-                                plot_data_viz['_row_index'] = range(len(plot_data_viz))
-                            
-                            if name_col_viz:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, name_col_viz, '_row_index']
-                            else:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, '_row_index']
+                            # Detect name/ID column using helper function
+                            name_col_viz = detect_name_column(plot_data_viz, smiles_col_name_viz)
+                            # Prepare customdata using helper function
+                            plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
+                            color_param_viz['custom_data'] = custom_data_cols_viz
                         
                         fig = px.scatter(
                             plot_data_viz,
@@ -2103,25 +2084,11 @@ elif input_mode == "Data Visualization":
                         # Prepare customdata for structure viewer (only if showing points)
                         if show_points_viz and has_smiles_viz:
                             smiles_col_name_viz = st.session_state.viz_smiles_col
-                            # Detect name/ID column
-                            name_col_viz = None
-                            for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                if col_candidate in plot_data_viz.columns:
-                                    name_col_viz = col_candidate
-                                    break
-                            if not name_col_viz:
-                                for col in plot_data_viz.columns:
-                                    if col != smiles_col_name_viz and plot_data_viz[col].dtype == 'object':
-                                        name_col_viz = col
-                                        break
-                            
-                            if '_row_index' not in plot_data_viz.columns:
-                                plot_data_viz['_row_index'] = range(len(plot_data_viz))
-                            
-                            if name_col_viz:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, name_col_viz, '_row_index']
-                            else:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, '_row_index']
+                            # Detect name/ID column using helper function
+                            name_col_viz = detect_name_column(plot_data_viz, smiles_col_name_viz)
+                            # Prepare customdata using helper function
+                            plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
+                            color_param_viz['custom_data'] = custom_data_cols_viz
                         
                         fig = px.box(
                             plot_data_viz,
@@ -2135,25 +2102,11 @@ elif input_mode == "Data Visualization":
                         # Prepare customdata for structure viewer (only if showing points)
                         if show_points_viz and has_smiles_viz:
                             smiles_col_name_viz = st.session_state.viz_smiles_col
-                            # Detect name/ID column
-                            name_col_viz = None
-                            for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                                if col_candidate in plot_data_viz.columns:
-                                    name_col_viz = col_candidate
-                                    break
-                            if not name_col_viz:
-                                for col in plot_data_viz.columns:
-                                    if col != smiles_col_name_viz and plot_data_viz[col].dtype == 'object':
-                                        name_col_viz = col
-                                        break
-                            
-                            if '_row_index' not in plot_data_viz.columns:
-                                plot_data_viz['_row_index'] = range(len(plot_data_viz))
-                            
-                            if name_col_viz:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, name_col_viz, '_row_index']
-                            else:
-                                color_param_viz['custom_data'] = [smiles_col_name_viz, '_row_index']
+                            # Detect name/ID column using helper function
+                            name_col_viz = detect_name_column(plot_data_viz, smiles_col_name_viz)
+                            # Prepare customdata using helper function
+                            plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
+                            color_param_viz['custom_data'] = custom_data_cols_viz
                         
                         fig = px.violin(
                             plot_data_viz,
@@ -2216,17 +2169,8 @@ elif input_mode == "Data Visualization":
                     if has_smiles_viz and selected_chart_viz in ['Scatter Plot', 'Box Plot', 'Violin Plot']:
                         # Show hint about structure viewer
                         st.markdown(get_structure_viewer_hint(), unsafe_allow_html=True)
-                        # Detect the name column that was used
-                        detected_name_col_viz = None
-                        for col_candidate in ['Id', 'ID', 'id', 'Name', 'name', 'Compound', 'compound', 'Molecule', 'molecule']:
-                            if col_candidate in plot_data_viz.columns:
-                                detected_name_col_viz = col_candidate
-                                break
-                        if not detected_name_col_viz:
-                            for col in plot_data_viz.columns:
-                                if col != st.session_state.viz_smiles_col and plot_data_viz[col].dtype == 'object':
-                                    detected_name_col_viz = col
-                                    break
+                        # Detect the name column using helper function
+                        detected_name_col_viz = detect_name_column(plot_data_viz, st.session_state.viz_smiles_col)
                         
                         components.html(
                             get_structure_viewer_component(

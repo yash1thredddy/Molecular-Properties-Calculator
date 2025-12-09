@@ -494,7 +494,7 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
                     infoDiv.innerHTML = `
                         <div class="error-message-{chart_id}">
                             <strong>Error:</strong> Failed to render structure<br>
-                            <small>${{error.message}}</small>
+                            <small>${{escapeHtml(error.message)}}</small>
                         </div>
                     `;
                 }}
@@ -533,13 +533,17 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
             
             tryAttach();
             
-            // Re-attach listener when Streamlit updates
+            // Re-attach listener when Streamlit updates (with debouncing for performance)
+            let debounceTimer;
             const observer = new MutationObserver(function(mutations) {{
-                const plotlyDiv = findPlotlyChart();
-                if (plotlyDiv && !plotlyDiv._structureViewerAttached_{chart_id}) {{
-                    console.log('[Structure Viewer {chart_id}] Detected plot update, re-attaching');
-                    attachClickListener();
-                }}
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {{
+                    const plotlyDiv = findPlotlyChart();
+                    if (plotlyDiv && !plotlyDiv._structureViewerAttached_{chart_id}) {{
+                        console.log('[Structure Viewer {chart_id}] Detected plot update, re-attaching');
+                        attachClickListener();
+                    }}
+                }}, 100);  // 100ms debounce
             }});
             
             const container = parentDoc.querySelector('[data-testid="stAppViewContainer"]');
