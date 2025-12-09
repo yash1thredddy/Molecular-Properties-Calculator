@@ -165,6 +165,8 @@ class MolecularCalculator:
             properties['HB_Donors'] = Descriptors.NumHDonors(mol)
             properties['HB_Acceptors'] = Descriptors.NumHAcceptors(mol)
             properties['TPSA'] = round(Descriptors.TPSA(mol), 2)
+            # Calculate 10×PSA/MW ratio (useful for predicting membrane permeability)
+            properties['10xPSA_MW'] = round((10 * properties['TPSA']) / properties['Molecular_Weight'], 3) if properties['Molecular_Weight'] > 0 else 0
             properties['Rotatable_Bonds'] = Descriptors.NumRotatableBonds(mol)
 
             # Drug-likeness
@@ -283,7 +285,7 @@ class MolecularCalculator:
         """
         groups = {
             "Basic Properties": ['Molecular_Weight', 'Heavy_Atom_Count', 'Atom_Count', 'Bond_Count', 'Formal_Charge'],
-            "Lipinski Properties": ['LogP', 'HB_Donors', 'HB_Acceptors', 'TPSA', 'Rotatable_Bonds'],
+            "Lipinski Properties": ['LogP', 'HB_Donors', 'HB_Acceptors', 'TPSA', '10xPSA_MW', 'Rotatable_Bonds'],
             "Drug-likeness": ['QED'],
             "Rule Violations": ['Lipinski_Violations', 'Veber_Violations'],
             "Ring Properties": ['Aromatic_Rings', 'Aliphatic_Rings', 'Saturated_Rings', 'Ring_Count', 'Heteroatoms'],
@@ -344,7 +346,7 @@ class ThreeDOLSRegression:
     Based on analytical formulas from partial differentiation of the cost function
     """
 
-    def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+    def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray, original_indices: np.ndarray = None):
         """
         Initialize 3D OLS regression with data
 
@@ -352,11 +354,18 @@ class ThreeDOLSRegression:
             x: 1D array of X values
             y: 1D array of Y values
             z: 1D array of Z values (dependent variable)
+            original_indices: Optional array of original indices (for tracking valid data points)
         """
         # Convert to numpy arrays and remove any NaN values
         self.x = np.array(x, dtype=float)
         self.y = np.array(y, dtype=float)
         self.z = np.array(z, dtype=float)
+        
+        # Store or create original indices
+        if original_indices is not None:
+            self.original_indices = np.array(original_indices)
+        else:
+            self.original_indices = np.arange(len(self.x))
 
         # Create mask for valid data (no NaN or Inf)
         valid_mask = (
@@ -368,6 +377,7 @@ class ThreeDOLSRegression:
         self.x = self.x[valid_mask]
         self.y = self.y[valid_mask]
         self.z = self.z[valid_mask]
+        self.valid_indices = self.original_indices[valid_mask]  # Track which rows were kept
 
         self.n = len(self.x)
 
@@ -589,6 +599,7 @@ class PropertyExplanations:
         - **HB_Donors**: Hydrogen bond donors (≤5 for drug-likeness)
         - **HB_Acceptors**: Hydrogen bond acceptors (≤10 for drug-likeness)
         - **TPSA**: Topological polar surface area in Ų (≤140 for oral bioavailability)
+        - **10xPSA_MW**: PSA/MW ratio scaled by 10 (lower values indicate better membrane permeability)
         - **Rotatable_Bonds**: Number of rotatable bonds (≤10 for oral bioavailability)
 
         #### Drug-likeness
