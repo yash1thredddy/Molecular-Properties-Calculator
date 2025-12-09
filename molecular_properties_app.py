@@ -450,10 +450,13 @@ elif input_mode == "Batch Processing":
                     st.markdown("**Essential Columns:**")
 
                     # SMILES mapping
+                    smiles_default_idx = 0
+                    if smiles_col and smiles_col in df.columns:
+                        smiles_default_idx = list(df.columns).index(smiles_col) + 1
                     smiles_mapping = st.selectbox(
                         "SMILES column:",
                         options=['[Not mapped]'] + list(df.columns),
-                        index=list(df.columns).index(smiles_col) + 1 if smiles_col else 0,
+                        index=smiles_default_idx,
                         key="map_smiles",
                         help="Select the column containing molecular structures (SMILES/InChI)"
                     )
@@ -465,10 +468,13 @@ elif input_mode == "Batch Processing":
 
                     # pKi mapping
                     pki_detected_auto = DependencyChecker.detect_column(df, 'pki')
+                    pki_default_idx = 0
+                    if pki_detected_auto and pki_detected_auto in df.columns:
+                        pki_default_idx = list(df.columns).index(pki_detected_auto) + 1
                     pki_mapping = st.selectbox(
                         "pKi column:",
                         options=['[Not mapped]'] + list(df.columns),
-                        index=list(df.columns).index(pki_detected_auto) + 1 if pki_detected_auto else 0,
+                        index=pki_default_idx,
                         key="map_pki",
                         help="Select the column containing pKi values (required for LEI calculations)"
                     )
@@ -481,10 +487,13 @@ elif input_mode == "Batch Processing":
 
                     # MW mapping
                     mw_detected_auto = DependencyChecker.detect_column(df, 'mw')
+                    mw_default_idx = 0
+                    if mw_detected_auto and mw_detected_auto in df.columns:
+                        mw_default_idx = list(df.columns).index(mw_detected_auto) + 1
                     mw_mapping = st.selectbox(
                         "Molecular Weight (MW):",
                         options=['[Not mapped]'] + list(df.columns),
-                        index=list(df.columns).index(mw_detected_auto) + 1 if mw_detected_auto else 0,
+                        index=mw_default_idx,
                         key="map_mw"
                     )
                     if mw_mapping != '[Not mapped]':
@@ -492,10 +501,13 @@ elif input_mode == "Batch Processing":
 
                     # TPSA mapping
                     tpsa_detected_auto = DependencyChecker.detect_column(df, 'tpsa')
+                    tpsa_default_idx = 0
+                    if tpsa_detected_auto and tpsa_detected_auto in df.columns:
+                        tpsa_default_idx = list(df.columns).index(tpsa_detected_auto) + 1
                     tpsa_mapping = st.selectbox(
                         "TPSA:",
                         options=['[Not mapped]'] + list(df.columns),
-                        index=list(df.columns).index(tpsa_detected_auto) + 1 if tpsa_detected_auto else 0,
+                        index=tpsa_default_idx,
                         key="map_tpsa"
                     )
                     if tpsa_mapping != '[Not mapped]':
@@ -503,10 +515,13 @@ elif input_mode == "Batch Processing":
 
                     # Heavy Atoms mapping
                     heavy_detected_auto = DependencyChecker.detect_column(df, 'heavy_atoms')
+                    heavy_default_idx = 0
+                    if heavy_detected_auto and heavy_detected_auto in df.columns:
+                        heavy_default_idx = list(df.columns).index(heavy_detected_auto) + 1
                     heavy_mapping = st.selectbox(
                         "Heavy Atom Count:",
                         options=['[Not mapped]'] + list(df.columns),
-                        index=list(df.columns).index(heavy_detected_auto) + 1 if heavy_detected_auto else 0,
+                        index=heavy_default_idx,
                         key="map_heavy"
                     )
                     if heavy_mapping != '[Not mapped]':
@@ -1189,6 +1204,10 @@ elif input_mode == "Batch Processing":
 
                                 # Add correlation coefficient and regression stats (regardless of color column)
                                 correlation = plot_data[x_axis].corr(plot_data[y_axis])
+                                
+                                # Check if correlation is valid (not NaN)
+                                if pd.isna(correlation):
+                                    correlation = 0.0  # Default to 0 if correlation cannot be calculated
 
                                 # Calculate regression statistics if trendline is shown
                                 if show_trendline:
@@ -1510,15 +1529,23 @@ elif input_mode == "Batch Processing":
 
                             elif selected_chart == 'Heatmap':
                                 # Create correlation heatmap
-                                corr_matrix = plot_data[numeric_cols].corr()
-                                fig = px.imshow(
-                                    corr_matrix,
-                                    title="Properties Correlation Heatmap",
-                                    color_continuous_scale='RdBu_r',
-                                    aspect='auto',
-                                    text_auto=True
-                                )
-                                fig.update_traces(texttemplate='%{z:.2f}', textfont_size=10)
+                                try:
+                                    corr_matrix = plot_data[numeric_cols].corr()
+                                    
+                                    # Check if correlation matrix is valid
+                                    if corr_matrix.isna().all().all():
+                                        st.error("❌ Cannot create heatmap: insufficient data for correlation calculation")
+                                    else:
+                                        fig = px.imshow(
+                                            corr_matrix,
+                                            title="Properties Correlation Heatmap",
+                                            color_continuous_scale='RdBu_r',
+                                            aspect='auto',
+                                            text_auto=True
+                                        )
+                                        fig.update_traces(texttemplate='%{z:.2f}', textfont_size=10)
+                                except Exception as e:
+                                    st.error(f"❌ Error creating heatmap: {str(e)}")
 
                             # Enhance layout (skip for 3D OLS Regression)
                             if selected_chart != '3D OLS Regression':
@@ -1795,6 +1822,10 @@ elif input_mode == "Data Visualization":
 
                         # Add correlation coefficient and regression stats (regardless of color column)
                         correlation = plot_data_viz[x_axis_viz].corr(plot_data_viz[y_axis_viz])
+                        
+                        # Check if correlation is valid (not NaN)
+                        if pd.isna(correlation):
+                            correlation = 0.0  # Default to 0 if correlation cannot be calculated
 
                         # Calculate regression statistics if trendline is shown
                         if show_trendline_viz:
@@ -1903,15 +1934,23 @@ elif input_mode == "Data Visualization":
 
                     elif selected_chart_viz == 'Heatmap':
                         # Create correlation heatmap
-                        corr_matrix = plot_data_viz[numeric_cols_viz].corr()
-                        fig = px.imshow(
-                            corr_matrix,
-                            title="Properties Correlation Heatmap",
-                            color_continuous_scale='RdBu_r',
-                            aspect='auto',
-                            text_auto=True
-                        )
-                        fig.update_traces(texttemplate='%{z:.2f}', textfont_size=10)
+                        try:
+                            corr_matrix = plot_data_viz[numeric_cols_viz].corr()
+                            
+                            # Check if correlation matrix is valid
+                            if corr_matrix.isna().all().all():
+                                st.error("❌ Cannot create heatmap: insufficient data for correlation calculation")
+                            else:
+                                fig = px.imshow(
+                                    corr_matrix,
+                                    title="Properties Correlation Heatmap",
+                                    color_continuous_scale='RdBu_r',
+                                    aspect='auto',
+                                    text_auto=True
+                                )
+                                fig.update_traces(texttemplate='%{z:.2f}', textfont_size=10)
+                        except Exception as e:
+                            st.error(f"❌ Error creating heatmap: {str(e)}")
 
                     # Enhance layout
                     layout_height_viz = 600
