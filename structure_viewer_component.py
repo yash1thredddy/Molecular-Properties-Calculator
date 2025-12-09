@@ -46,9 +46,24 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
             console.log('[Structure Viewer {chart_id}] Loading SmilesDrawer from jsDelivr CDN...');
             const script = parentDoc.createElement('script');
             // Use jsDelivr CDN which is less likely to be blocked by tracking prevention
+            
+            // TODO: Upgrade to SmilesDrawer 2.1.7+ when compatibility issues are resolved
+            // PINNED TO v2.0.1 - DO NOT UPGRADE WITHOUT TESTING
+            // Reason: Version 2.1.7 has breaking changes that prevent molecule rendering
+            // Issue: Molecules render as blank canvases with v2.1.7 (tested 2025-12-09)
+            // Blockers:
+            //   - API changes in parse() or draw() methods
+            //   - Constructor signature changes
+            //   - Canvas rendering pipeline changes
+            // Next steps:
+            //   1. Check SmilesDrawer GitHub changelog for breaking changes
+            //   2. Test intermediate versions (2.1.0-2.1.6) to identify breaking version
+            //   3. Update our code to match new API if needed
+            //   4. Comprehensive testing before upgrading
+            // Revisit: Q1 2026 or when official migration guide is available
             script.src = 'https://cdn.jsdelivr.net/npm/smiles-drawer@2.0.1/dist/smiles-drawer.min.js';
             script.onload = function() {{
-                console.log('[Structure Viewer {chart_id}] ✅ SmilesDrawer loaded successfully from jsDelivr');
+                console.log('[Structure Viewer {chart_id}] ✅ SmilesDrawer v2.0.1 loaded successfully from jsDelivr');
                 initViewer();
             }};
             script.onerror = function(err) {{
@@ -253,10 +268,10 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
             // Initialize SmilesDrawer
             let drawer = null;
             if (typeof parentWin.SmilesDrawer !== 'undefined') {{
-                // Check the correct constructor name
                 console.log('[Structure Viewer {chart_id}] SmilesDrawer object:', Object.keys(parentWin.SmilesDrawer));
                 
-                // Try different constructor names
+                // v2.0.1 uses SmilesDrawer.Drawer constructor
+                // Note: v2.1.7+ may use different constructor name
                 if (parentWin.SmilesDrawer.Drawer) {{
                     drawer = new parentWin.SmilesDrawer.Drawer({{
                         width: 300,
@@ -265,22 +280,14 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
                         fontFamily: 'Arial, sans-serif',
                         fontSize: 14
                     }});
-                    console.log('[Structure Viewer {chart_id}] ✅ SmilesDrawer initialized (Drawer)');
-                }} else if (parentWin.SmilesDrawer.SmiDrawer) {{
-                    drawer = new parentWin.SmilesDrawer.SmiDrawer({{
-                        width: 300,
-                        height: 300,
-                        bondThickness: 1.5,
-                        fontFamily: 'Arial, sans-serif',
-                        fontSize: 14
-                    }});
-                    console.log('[Structure Viewer {chart_id}] ✅ SmilesDrawer initialized (SmiDrawer)');
+                    console.log('[Structure Viewer {chart_id}] ✅ SmilesDrawer v2.0.1 initialized');
                 }} else {{
-                    console.error('[Structure Viewer {chart_id}] Could not find Drawer constructor');
+                    console.error('[Structure Viewer {chart_id}] ❌ Drawer constructor not found');
+                    console.error('[Structure Viewer {chart_id}] Available constructors:', Object.keys(parentWin.SmilesDrawer));
                     return;
                 }}
             }} else {{
-                console.error('[Structure Viewer {chart_id}] SmilesDrawer not available');
+                console.error('[Structure Viewer {chart_id}] ❌ SmilesDrawer library not loaded');
                 return;
             }}
             
@@ -412,10 +419,25 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
                 infoDiv.innerHTML = '<div class="loading-message-{chart_id}">Rendering structure...</div>';
                 panel.classList.add('open');
                 
+                // Basic SMILES validation
+                if (!smiles || typeof smiles !== 'string' || smiles.trim() === '') {{
+                    console.error('[Structure Viewer {chart_id}] Invalid SMILES: empty or not a string');
+                    showError('Empty or invalid SMILES string', smiles, moleculeName);
+                    return;
+                }}
+                
+                // Check for obviously malformed SMILES (basic heuristics)
+                const trimmedSmiles = smiles.trim();
+                if (trimmedSmiles.length > 1000) {{
+                    console.warn('[Structure Viewer {chart_id}] SMILES unusually long (>1000 chars)');
+                }}
+                
                 try {{
                     parentWin.SmilesDrawer.parse(smiles, function(tree) {{
                         if (!tree) {{
-                            throw new Error('Failed to parse SMILES');
+                            console.error('[Structure Viewer {chart_id}] Parse returned null/undefined tree');
+                            showError('Failed to parse SMILES - structure may be invalid', smiles, moleculeName);
+                            return;
                         }}
                         
                         console.log('[Structure Viewer {chart_id}] SMILES parsed, drawing...');
@@ -482,22 +504,64 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
                         infoDiv.innerHTML = infoHTML;
                     }}, function(err) {{
                         console.error('[Structure Viewer {chart_id}] Error parsing SMILES:', err);
-                        infoDiv.innerHTML = `
-                            <div class="error-message-{chart_id}">
-                                <strong>Error:</strong> Invalid SMILES string<br>
-                                <small>${{escapeHtml(smiles)}}</small>
-                            </div>
-                        `;
+                        showError('Invalid SMILES string - parse failed', smiles, moleculeName, err);
                     }});
                 }} catch (error) {{
                     console.error('[Structure Viewer {chart_id}] Error rendering:', error);
-                    infoDiv.innerHTML = `
-                        <div class="error-message-{chart_id}">
-                            <strong>Error:</strong> Failed to render structure<br>
-                            <small>${{escapeHtml(error.message)}}</small>
+                    showError('Failed to render structure', smiles, moleculeName, error);
+                }}
+            }}
+            
+            // Show error message with helpful context
+            function showError(message, smiles, moleculeName, error = null) {{
+                let errorHTML = `
+                    <div class="error-message-{chart_id}">
+                        <strong>⚠️ ${{escapeHtml(message)}}</strong><br><br>
+                `;
+                
+                // Show molecule identification
+                if (moleculeName) {{
+                    errorHTML += `
+                        <div style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px;">
+                            <strong>Molecule:</strong> ${{escapeHtml(String(moleculeName))}}
                         </div>
                     `;
                 }}
+                
+                // Show SMILES with truncation if too long
+                const maxSmilesDisplay = 100;
+                const displaySmiles = smiles && smiles.length > maxSmilesDisplay 
+                    ? smiles.substring(0, maxSmilesDisplay) + '...' 
+                    : smiles;
+                    
+                errorHTML += `
+                    <div style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px;">
+                        <strong>SMILES:</strong><br>
+                        <code style="font-size: 11px; word-break: break-all;">${{escapeHtml(displaySmiles || 'N/A')}}</code>
+                    </div>
+                `;
+                
+                // Show technical error if available
+                if (error && error.message) {{
+                    errorHTML += `
+                        <div style="margin: 10px 0; font-size: 11px; color: #666;">
+                            <strong>Technical details:</strong> ${{escapeHtml(error.message)}}
+                        </div>
+                    `;
+                }}
+                
+                errorHTML += `
+                    <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 3px solid #ffc107; font-size: 12px;">
+                        <strong>💡 Suggestions:</strong><br>
+                        • Check if the SMILES string is complete and valid<br>
+                        • Verify the source data doesn't have truncated/corrupted values<br>
+                        • Try validating the SMILES with an external tool<br>
+                        • Contact support if this persists for valid structures
+                    </div>
+                    </div>
+                `;
+                
+                infoDiv.innerHTML = errorHTML;
             }}
             
             // Helper functions
