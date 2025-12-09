@@ -4,9 +4,14 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from io import StringIO
+import warnings
 from molecular_calculator import MolecularCalculator, PropertyExplanations, ThreeDOLSRegression
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+
+# Suppress numpy runtime warnings for division by zero (occurs in correlation calculations with NaN/Inf values)
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='numpy')
+np.seterr(divide='ignore', invalid='ignore')
 
 # Import Ligand Efficiency functionality
 from ligand_efficiency import (
@@ -1182,58 +1187,58 @@ elif input_mode == "Batch Processing":
                                     **color_param
                                 )
 
-                                if not color_col:
-                                    # Add correlation coefficient and regression stats
-                                    correlation = plot_data[x_axis].corr(plot_data[y_axis])
+                                # Add correlation coefficient and regression stats (regardless of color column)
+                                correlation = plot_data[x_axis].corr(plot_data[y_axis])
 
-                                    # Calculate regression statistics if trendline is shown
-                                    if show_trendline:
+                                # Calculate regression statistics if trendline is shown
+                                if show_trendline:
 
-                                        # Prepare data for regression
-                                        X = plot_data[[x_axis]].dropna()
-                                        y = plot_data[y_axis].dropna()
+                                    # Prepare data for regression
+                                    X = plot_data[[x_axis]].dropna()
+                                    y = plot_data[y_axis].dropna()
 
-                                        # Ensure same indices
-                                        common_idx = X.index.intersection(y.index)
-                                        X = X.loc[common_idx]
-                                        y = y.loc[common_idx]
+                                    # Ensure same indices
+                                    common_idx = X.index.intersection(y.index)
+                                    X = X.loc[common_idx]
+                                    y = y.loc[common_idx]
 
-                                        if len(X) > 1:
-                                            # Fit linear regression
-                                            reg = LinearRegression()
-                                            reg.fit(X, y)
+                                    if len(X) > 1:
+                                        # Fit linear regression
+                                        reg = LinearRegression()
+                                        reg.fit(X, y)
 
-                                            # Calculate R²
-                                            y_pred = reg.predict(X)
-                                            r2 = r2_score(y, y_pred)
+                                        # Calculate R²
+                                        y_pred = reg.predict(X)
+                                        r2 = r2_score(y, y_pred)
 
-                                            # Get slope and intercept
-                                            slope = reg.coef_[0]
-                                            intercept = reg.intercept_
+                                        # Get slope and intercept
+                                        slope = reg.coef_[0]
+                                        intercept = reg.intercept_
 
-                                            # Format equation with actual variable names
-                                            sign = "+" if intercept >= 0 else "-"
-                                            y_name = y_axis.replace('_', ' ')
-                                            x_name = x_axis.replace('_', ' ')
-                                            equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
+                                        # Format equation with actual variable names
+                                        sign = "+" if intercept >= 0 else "-"
+                                        y_name = y_axis.replace('_', ' ')
+                                        x_name = x_axis.replace('_', ' ')
+                                        equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
 
-                                            # Add regression info
-                                            fig.add_annotation(
-                                                x=0.02, y=0.98,
-                                                xref="paper", yref="paper",
-                                                text=f"<b>Regression Statistics:</b><br>" +
-                                                     f"Equation: {equation}<br>" +
-                                                     f"R² = {r2:.3f}<br>" +
-                                                     f"Correlation: {correlation:.3f}",
-                                                showarrow=False,
-                                                bgcolor="rgba(255,255,255,0.9)",
-                                                bordercolor="black",
-                                                borderwidth=1,
-                                                align="left",
-                                                font=dict(size=11)
-                                            )
-                                    else:
-                                        # Just show correlation if no trendline
+                                        # Add regression info
+                                        fig.add_annotation(
+                                            x=0.02, y=0.98,
+                                            xref="paper", yref="paper",
+                                            text=f"<b>Regression Statistics:</b><br>" +
+                                                 f"Equation: {equation}<br>" +
+                                                 f"R² = {r2:.3f}<br>" +
+                                                 f"Correlation: {correlation:.3f}",
+                                            showarrow=False,
+                                            bgcolor="rgba(255,255,255,0.9)",
+                                            bordercolor="black",
+                                            borderwidth=1,
+                                            align="left",
+                                            font=dict(size=11)
+                                        )
+                                else:
+                                    # Just show correlation if no trendline
+                                    if not color_col:  # Only show correlation box when no color to avoid clutter
                                         fig.add_annotation(
                                             x=0.02, y=0.98,
                                             xref="paper", yref="paper",
@@ -1788,58 +1793,58 @@ elif input_mode == "Data Visualization":
                             **color_param_viz
                         )
 
-                        if not color_col_viz:
-                            # Add correlation coefficient and regression stats
-                            correlation = plot_data_viz[x_axis_viz].corr(plot_data_viz[y_axis_viz])
+                        # Add correlation coefficient and regression stats (regardless of color column)
+                        correlation = plot_data_viz[x_axis_viz].corr(plot_data_viz[y_axis_viz])
 
-                            # Calculate regression statistics if trendline is shown
-                            if show_trendline_viz:
+                        # Calculate regression statistics if trendline is shown
+                        if show_trendline_viz:
 
-                                # Prepare data for regression
-                                X = plot_data_viz[[x_axis_viz]].dropna()
-                                y = plot_data_viz[y_axis_viz].dropna()
+                            # Prepare data for regression
+                            X = plot_data_viz[[x_axis_viz]].dropna()
+                            y = plot_data_viz[y_axis_viz].dropna()
 
-                                # Ensure same indices
-                                common_idx = X.index.intersection(y.index)
-                                X = X.loc[common_idx]
-                                y = y.loc[common_idx]
+                            # Ensure same indices
+                            common_idx = X.index.intersection(y.index)
+                            X = X.loc[common_idx]
+                            y = y.loc[common_idx]
 
-                                if len(X) > 1:
-                                    # Fit linear regression
-                                    reg = LinearRegression()
-                                    reg.fit(X, y)
+                            if len(X) > 1:
+                                # Fit linear regression
+                                reg = LinearRegression()
+                                reg.fit(X, y)
 
-                                    # Calculate R²
-                                    y_pred = reg.predict(X)
-                                    r2 = r2_score(y, y_pred)
+                                # Calculate R²
+                                y_pred = reg.predict(X)
+                                r2 = r2_score(y, y_pred)
 
-                                    # Get slope and intercept
-                                    slope = reg.coef_[0]
-                                    intercept = reg.intercept_
+                                # Get slope and intercept
+                                slope = reg.coef_[0]
+                                intercept = reg.intercept_
 
-                                    # Format equation with actual variable names
-                                    sign = "+" if intercept >= 0 else "-"
-                                    y_name = y_axis_viz.replace('_', ' ')
-                                    x_name = x_axis_viz.replace('_', ' ')
-                                    equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
+                                # Format equation with actual variable names
+                                sign = "+" if intercept >= 0 else "-"
+                                y_name = y_axis_viz.replace('_', ' ')
+                                x_name = x_axis_viz.replace('_', ' ')
+                                equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
 
-                                    # Add regression info
-                                    fig.add_annotation(
-                                        x=0.02, y=0.98,
-                                        xref="paper", yref="paper",
-                                        text=f"<b>Regression Statistics:</b><br>" +
-                                             f"Equation: {equation}<br>" +
-                                             f"R² = {r2:.3f}<br>" +
-                                             f"Correlation: {correlation:.3f}",
-                                        showarrow=False,
-                                        bgcolor="rgba(255,255,255,0.9)",
-                                        bordercolor="black",
-                                        borderwidth=1,
-                                        align="left",
-                                        font=dict(size=11)
-                                    )
-                            else:
-                                # Just show correlation if no trendline
+                                # Add regression info
+                                fig.add_annotation(
+                                    x=0.02, y=0.98,
+                                    xref="paper", yref="paper",
+                                    text=f"<b>Regression Statistics:</b><br>" +
+                                         f"Equation: {equation}<br>" +
+                                         f"R² = {r2:.3f}<br>" +
+                                         f"Correlation: {correlation:.3f}",
+                                    showarrow=False,
+                                    bgcolor="rgba(255,255,255,0.9)",
+                                    bordercolor="black",
+                                    borderwidth=1,
+                                    align="left",
+                                    font=dict(size=11)
+                                )
+                        else:
+                            # Just show correlation if no trendline
+                            if not color_col_viz:  # Only show correlation box when no color to avoid clutter
                                 fig.add_annotation(
                                     x=0.02, y=0.98,
                                     xref="paper", yref="paper",
