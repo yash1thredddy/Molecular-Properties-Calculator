@@ -399,13 +399,30 @@ if input_mode == "Single Molecule":
                         st.plotly_chart(fig, use_container_width=True)
 
                     # Download results
-                    csv = results_df.to_csv()
-                    st.download_button(
-                        label="Download Results as CSV",
-                        data=csv,
-                        file_name=f"molecular_properties_{st.session_state.current_smiles.replace('/', '_')[:20]}.csv",
-                        mime="text/csv"
-                    )
+                    download_col1, download_col2 = st.columns(2)
+                    base_filename = f"molecular_properties_{st.session_state.current_smiles.replace('/', '_')[:20]}"
+                    with download_col1:
+                        csv = results_df.to_csv(index=False)
+                        st.download_button(
+                            label="📄 Download CSV",
+                            data=csv,
+                            file_name=f"{base_filename}.csv",
+                            mime="text/csv"
+                        )
+                    with download_col2:
+                        try:
+                            from io import BytesIO
+                            xlsx_buffer = BytesIO()
+                            results_df.to_excel(xlsx_buffer, index=False, engine='openpyxl')
+                            xlsx_buffer.seek(0)
+                            st.download_button(
+                                label="📊 Download XLSX",
+                                data=xlsx_buffer.getvalue(),
+                                file_name=f"{base_filename}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        except Exception as e:
+                            st.error(f"Error creating XLSX: {str(e)}")
                 else:
                     st.error("Could not calculate properties for this molecule.")
             else:
@@ -1100,6 +1117,7 @@ elif input_mode == "Batch Processing":
                         'Scatter Plot': {'requires': ['x', 'y'], 'desc': 'Compare two numeric variables'},
                         '3D OLS Regression': {'requires': ['x', 'y', 'z'], 'desc': 'Fit 3D plane: Z = b0 + b1·X + b2·Y'},
                         'Histogram': {'requires': ['x'], 'desc': 'Distribution of a single variable'},
+                        'Bar Chart': {'requires': ['cat'], 'desc': 'Count of categories (e.g., Active/Inactive)'},
                         'Box Plot': {'requires': ['y'], 'desc': 'Statistical summary with quartiles'},
                         'Violin Plot': {'requires': ['y'], 'desc': 'Distribution shape with density'},
                         'Line Plot': {'requires': ['x', 'y'], 'desc': 'Trends over continuous data'},
@@ -1123,20 +1141,68 @@ elif input_mode == "Batch Processing":
                     input_cols = st.columns(4)
 
                     # Initialize variables
-                    x_axis, y_axis, z_axis, color_col, size_col = None, None, None, None, None
+                    x_axis, y_axis, z_axis, color_col, size_col, group_by_col = None, None, None, None, None, None
 
                     with input_cols[0]:
                         if 'x' in requires:
-                            x_axis = st.selectbox(
-                                "🔢 X-axis:",
-                                options=numeric_cols,
-                                index=numeric_cols.index('Molecular_Weight') if 'Molecular_Weight' in numeric_cols else 0,
-                                key="viz_x_axis"
+                            # For scatter/line plots, allow all columns for X-axis
+                            if selected_chart in ['Scatter Plot', 'Line Plot']:
+                                x_axis = st.selectbox(
+                                    "🔢 X-axis:",
+                                    options=all_cols,
+                                    index=all_cols.index('Molecular_Weight') if 'Molecular_Weight' in all_cols else 0,
+                                    key="viz_x_axis"
+                                )
+                            else:
+                                # For 3D regression, keep numeric only
+                                x_axis = st.selectbox(
+                                    "🔢 X-axis:",
+                                    options=numeric_cols,
+                                    index=numeric_cols.index('Molecular_Weight') if 'Molecular_Weight' in numeric_cols else 0,
+                                    key="viz_x_axis"
+                                )
+                        # Add Group by (X-axis) option for Box/Violin plots
+                        elif selected_chart in ['Box Plot', 'Violin Plot']:
+                            # Get categorical columns (non-numeric or low cardinality numeric)
+                            categorical_cols_box = [col for col in all_cols
+                                                   if col not in numeric_cols
+                                                   and st.session_state.batch_final_df[col].nunique() <= 50]
+                            low_cardinality_box = [col for col in numeric_cols
+                                                  if st.session_state.batch_final_df[col].nunique() <= 20]
+                            group_options = ['None'] + categorical_cols_box + low_cardinality_box
+                            group_by_col = st.selectbox(
+                                "📂 X-axis (Group by):",
+                                options=group_options,
+                                key="viz_group_by",
+                                help="Select a categorical column to group the data (e.g., active/inactive)"
                             )
+                            if group_by_col == 'None':
+                                group_by_col = None
+                        # Bar Chart - categorical X-axis
+                        elif selected_chart == 'Bar Chart':
+                            # Get all categorical columns for bar chart
+                            categorical_cols_bar = [col for col in all_cols
+                                                   if col not in numeric_cols
+                                                   and st.session_state.batch_final_df[col].nunique() <= 50]
+                            low_cardinality_bar = [col for col in numeric_cols
+                                                  if st.session_state.batch_final_df[col].nunique() <= 20]
+                            bar_x_options = categorical_cols_bar + low_cardinality_bar
+                            if bar_x_options:
+                                x_axis = st.selectbox(
+                                    "📊 X-axis (Category):",
+                                    options=bar_x_options,
+                                    key="viz_bar_x",
+                                    help="Select a categorical column for the X-axis"
+                                )
+                            else:
+                                st.warning("No categorical columns found for Bar Chart")
 
                     with input_cols[1]:
                         if 'y' in requires:
-                            available_y = [col for col in numeric_cols if col != x_axis] if x_axis else numeric_cols
+                            available_y = [col for col in all_cols if col != x_axis] if x_axis else all_cols
+                            # For 3D regression, keep Y numeric only
+                            if selected_chart == '3D OLS Regression':
+                                available_y = [col for col in numeric_cols if col != x_axis]
                             y_axis = st.selectbox(
                                 "📈 Y-axis:",
                                 options=available_y,
@@ -1145,10 +1211,20 @@ elif input_mode == "Batch Processing":
                             )
                         elif selected_chart in ['Histogram', 'Box Plot', 'Violin Plot']:
                             y_axis = st.selectbox(
-                                "📊 Variable:",
+                                "📊 Y-axis (Variable):",
                                 options=numeric_cols,
                                 index=numeric_cols.index('QED') if 'QED' in numeric_cols else 0,
                                 key="viz_single_var"
+                            )
+                        elif selected_chart == 'Bar Chart':
+                            # Y-axis options: Count (default) or a numeric column for aggregation
+                            bar_y_options = ['Count'] + numeric_cols
+                            y_axis = st.selectbox(
+                                "📊 Y-axis (Value):",
+                                options=bar_y_options,
+                                index=0,  # Default to Count
+                                key="viz_bar_y",
+                                help="Count shows frequency, or select a numeric column to show sum"
                             )
 
                     # Z-axis for 3D OLS Regression
@@ -1213,16 +1289,55 @@ elif input_mode == "Batch Processing":
 
                     # Size parameter for scatter plots
                     size_col = None
+                    fixed_size = 8  # Default marker size
+                    size_max = 20  # Default max size for column-based sizing
+                    shape_col = None  # Shape by column
                     if selected_chart == 'Scatter Plot':
                         st.markdown("**📏 Size Options:**")
-                        size_options = ['None'] + numeric_cols
+                        size_options = ['Fixed Size'] + numeric_cols
                         size_col = st.selectbox(
                             "Size by:",
                             options=size_options,
                             key="viz_size_col"
                         )
-                        if size_col == 'None':
+                        if size_col == 'Fixed Size':
+                            # Show slider for fixed marker size
+                            fixed_size = st.slider(
+                                "Marker Size:",
+                                min_value=2,
+                                max_value=30,
+                                value=8,
+                                key="viz_fixed_size"
+                            )
                             size_col = None
+                        else:
+                            # Show slider for max size when using column-based sizing
+                            size_max = st.slider(
+                                "Max Marker Size:",
+                                min_value=10,
+                                max_value=50,
+                                value=20,
+                                key="viz_size_max"
+                            )
+
+                        # Shape parameter for scatter plots
+                        st.markdown("**🔷 Shape Options:**")
+                        # Get categorical columns (non-numeric with reasonable unique values)
+                        categorical_cols = [col for col in all_cols
+                                          if col not in numeric_cols
+                                          and st.session_state.batch_final_df[col].nunique() <= 20]
+                        # Also include numeric columns with few unique values (could be categorical)
+                        low_cardinality_numeric = [col for col in numeric_cols
+                                                   if st.session_state.batch_final_df[col].nunique() <= 10]
+                        shape_options = ['None'] + categorical_cols + low_cardinality_numeric
+                        shape_col = st.selectbox(
+                            "Shape by:",
+                            options=shape_options,
+                            key="viz_shape_col",
+                            help="Select a categorical column to differentiate points by marker shape (max 10 unique values recommended)"
+                        )
+                        if shape_col == 'None':
+                            shape_col = None
 
                     # Faceting/Grouping options removed for clarity
                     facet_col = None
@@ -1250,7 +1365,14 @@ elif input_mode == "Batch Processing":
 
                             # Add size parameter for scatter plots
                             if size_col and selected_chart == 'Scatter Plot':
+                                # Filter out NaN values in size column to avoid Plotly error
+                                plot_data = plot_data.dropna(subset=[size_col])
                                 color_param['size'] = size_col
+                                color_param['size_max'] = size_max
+
+                            # Add shape parameter for scatter plots
+                            if shape_col and selected_chart == 'Scatter Plot':
+                                color_param['symbol'] = shape_col
 
                             # Faceting parameter removed
 
@@ -1267,7 +1389,7 @@ elif input_mode == "Batch Processing":
                                     # Prepare customdata using helper function
                                     plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
                                     color_param['custom_data'] = custom_data_cols
-                                
+
                                 fig = px.scatter(
                                     plot_data,
                                     x=x_axis,
@@ -1277,12 +1399,17 @@ elif input_mode == "Batch Processing":
                                     **color_param
                                 )
 
+                                # Apply fixed marker size if no size column selected
+                                if not size_col:
+                                    fig.update_traces(marker=dict(size=fixed_size))
+
                                 # Add correlation coefficient and regression stats (regardless of color column)
                                 correlation = plot_data[x_axis].corr(plot_data[y_axis])
-                                
+                                correlation_valid = not pd.isna(correlation)
+
                                 # Check if correlation is valid (not NaN)
-                                if pd.isna(correlation):
-                                    correlation = 0.0  # Default to 0 if correlation cannot be calculated
+                                if not correlation_valid:
+                                    correlation = None  # Keep as None to indicate invalid
 
                                 # Calculate regression statistics if trendline is shown
                                 if show_trendline:
@@ -1316,13 +1443,14 @@ elif input_mode == "Batch Processing":
                                         equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
 
                                         # Add regression info
+                                        corr_text = f"Correlation: {correlation:.3f}" if correlation_valid else "Correlation: N/A"
                                         fig.add_annotation(
                                             x=0.02, y=0.98,
                                             xref="paper", yref="paper",
                                             text=f"<b>Regression Statistics:</b><br>" +
                                                  f"Equation: {equation}<br>" +
                                                  f"R² = {r2:.3f}<br>" +
-                                                 f"Correlation: {correlation:.3f}",
+                                                 corr_text,
                                             showarrow=False,
                                             bgcolor="rgba(255,255,255,0.9)",
                                             bordercolor="black",
@@ -1332,7 +1460,7 @@ elif input_mode == "Batch Processing":
                                         )
                                 else:
                                     # Just show correlation if no trendline
-                                    if not color_col:  # Only show correlation box when no color to avoid clutter
+                                    if not color_col and correlation_valid:  # Only show if valid and no color
                                         fig.add_annotation(
                                             x=0.02, y=0.98,
                                             xref="paper", yref="paper",
@@ -1369,12 +1497,19 @@ elif input_mode == "Batch Processing":
                                     # Prepare customdata using helper function
                                     plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
                                     color_param['custom_data'] = custom_data_cols
-                                
+
+                                # Build title based on grouping
+                                box_title = f"Box Plot of {y_axis.replace('_', ' ')}"
+                                if group_by_col:
+                                    box_title += f" by {group_by_col.replace('_', ' ')}"
+
                                 fig = px.box(
                                     plot_data,
-                                    y=y_axis,
-                                    title=f"Box Plot of {y_axis.replace('_', ' ')}",
+                                    x=group_by_col,  # Group by categorical column (on X-axis)
+                                    y=y_axis,        # Numeric variable (on Y-axis)
+                                    title=box_title,
                                     points="all" if show_points else False,
+                                    orientation='v',  # Ensure vertical orientation
                                     **color_param
                                 )
 
@@ -1387,12 +1522,19 @@ elif input_mode == "Batch Processing":
                                     # Prepare customdata using helper function
                                     plot_data, custom_data_cols = prepare_customdata(plot_data, smiles_col_name, name_col)
                                     color_param['custom_data'] = custom_data_cols
-                                
+
+                                # Build title based on grouping
+                                violin_title = f"Violin Plot of {y_axis.replace('_', ' ')}"
+                                if group_by_col:
+                                    violin_title += f" by {group_by_col.replace('_', ' ')}"
+
                                 fig = px.violin(
                                     plot_data,
-                                    y=y_axis,
-                                    title=f"Violin Plot of {y_axis.replace('_', ' ')}",
+                                    x=group_by_col,  # Group by categorical column (on X-axis)
+                                    y=y_axis,        # Numeric variable (on Y-axis)
+                                    title=violin_title,
                                     points="all" if show_points else False,
+                                    orientation='v',  # Ensure vertical orientation
                                     **color_param
                                 )
 
@@ -1406,6 +1548,39 @@ elif input_mode == "Batch Processing":
                                     title=f"{y_axis.replace('_', ' ')} over {x_axis.replace('_', ' ')}",
                                     **color_param
                                 )
+
+                            elif selected_chart == 'Bar Chart' and x_axis:
+                                # Bar Chart - count or aggregation
+                                # Filter color_param to only include valid bar chart params
+                                bar_color_param = {}
+                                if 'color' in color_param:
+                                    bar_color_param['color'] = color_param['color']
+                                if 'color_continuous_scale' in color_param:
+                                    bar_color_param['color_continuous_scale'] = color_param['color_continuous_scale']
+
+                                if y_axis == 'Count':
+                                    # Count of each category
+                                    bar_data = plot_data[x_axis].value_counts().reset_index(name='Count')
+                                    fig = px.bar(
+                                        bar_data,
+                                        x=x_axis,
+                                        y='Count',
+                                        title=f"Count by {x_axis.replace('_', ' ')}",
+                                        text='Count'
+                                    )
+                                    fig.update_traces(textposition='outside')
+                                else:
+                                    # Aggregation of numeric column by category
+                                    bar_data = plot_data.groupby(x_axis)[y_axis].sum().reset_index()
+                                    fig = px.bar(
+                                        bar_data,
+                                        x=x_axis,
+                                        y=y_axis,
+                                        title=f"Sum of {y_axis.replace('_', ' ')} by {x_axis.replace('_', ' ')}",
+                                        text=y_axis,
+                                        **bar_color_param
+                                    )
+                                    fig.update_traces(textposition='outside')
 
                             elif selected_chart == '3D OLS Regression' and x_axis and y_axis and z_axis:
                                 # Perform 3D OLS Regression
@@ -1739,26 +1914,46 @@ elif input_mode == "Batch Processing":
                             st.info("Please check your data and selected parameters.")
 
             # Download results
-            csv = st.session_state.batch_final_df.to_csv(index=False)
             # Extract original filename without extension and add suffix
             original_name = uploaded_file.name.rsplit('.', 1)[0]
-            download_filename = f"{original_name}_Calculated_Properties.csv"
-            st.download_button(
-                label="Download Results as CSV",
-                data=csv,
-                file_name=download_filename,
-                mime="text/csv"
-            )
+            base_download_filename = f"{original_name}_Calculated_Properties"
+
+            download_col1, download_col2 = st.columns(2)
+            with download_col1:
+                csv = st.session_state.batch_final_df.to_csv(index=False)
+                st.download_button(
+                    label="📄 Download CSV",
+                    data=csv,
+                    file_name=f"{base_download_filename}.csv",
+                    mime="text/csv"
+                )
+            with download_col2:
+                try:
+                    from io import BytesIO
+                    xlsx_buffer = BytesIO()
+                    st.session_state.batch_final_df.to_excel(xlsx_buffer, index=False, engine='openpyxl')
+                    xlsx_buffer.seek(0)
+                    st.download_button(
+                        label="📊 Download XLSX",
+                        data=xlsx_buffer.getvalue(),
+                        file_name=f"{base_download_filename}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e:
+                    st.error(f"Error creating XLSX: {str(e)}")
 
 elif input_mode == "Data Visualization":
     st.header("Data Visualization")
-    st.markdown("Upload any CSV file to create interactive visualizations of your data.")
+    st.markdown("Upload a CSV or XLSX file to create interactive visualizations of your data.")
 
-    viz_uploaded_file = st.file_uploader("Upload CSV file for visualization", type=['csv'], key="viz_upload")
+    viz_uploaded_file = st.file_uploader("Upload file for visualization", type=['csv', 'xlsx'], key="viz_upload")
 
     if viz_uploaded_file is not None:
         try:
-            viz_df = pd.read_csv(viz_uploaded_file)
+            if viz_uploaded_file.name.endswith('.xlsx'):
+                viz_df = pd.read_excel(viz_uploaded_file, engine='openpyxl')
+            else:
+                viz_df = pd.read_csv(viz_uploaded_file)
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
             st.stop()
@@ -1840,6 +2035,7 @@ elif input_mode == "Data Visualization":
             chart_types_viz = {
                 'Scatter Plot': {'requires': ['x', 'y'], 'desc': 'Compare two numeric variables'},
                 'Histogram': {'requires': ['x'], 'desc': 'Distribution of a single variable'},
+                'Bar Chart': {'requires': ['cat'], 'desc': 'Count of categories (e.g., Active/Inactive)'},
                 'Box Plot': {'requires': ['y'], 'desc': 'Statistical summary with quartiles'},
                 'Violin Plot': {'requires': ['y'], 'desc': 'Distribution shape with density'},
                 'Line Plot': {'requires': ['x', 'y'], 'desc': 'Trends over continuous data'},
@@ -1863,20 +2059,64 @@ elif input_mode == "Data Visualization":
             input_cols_viz = st.columns(4)
 
             # Initialize variables
-            x_axis_viz, y_axis_viz, color_col_viz, size_col_viz = None, None, None, None
+            x_axis_viz, y_axis_viz, color_col_viz, size_col_viz, group_by_col_viz = None, None, None, None, None
 
             with input_cols_viz[0]:
                 if 'x' in requires_viz:
-                    x_axis_viz = st.selectbox(
-                        "🔢 X-axis:",
-                        options=numeric_cols_viz,
-                        index=0,
-                        key="viz_x_axis_standalone"
+                    # For scatter/line plots, allow all columns for X-axis
+                    if selected_chart_viz in ['Scatter Plot', 'Line Plot']:
+                        x_axis_viz = st.selectbox(
+                            "🔢 X-axis:",
+                            options=all_cols_viz,
+                            index=0,
+                            key="viz_x_axis_standalone"
+                        )
+                    else:
+                        x_axis_viz = st.selectbox(
+                            "🔢 X-axis:",
+                            options=numeric_cols_viz,
+                            index=0,
+                            key="viz_x_axis_standalone"
+                        )
+                # Add Group by (X-axis) option for Box/Violin plots
+                elif selected_chart_viz in ['Box Plot', 'Violin Plot']:
+                    # Get categorical columns (non-numeric or low cardinality numeric)
+                    categorical_cols_box_viz = [col for col in all_cols_viz
+                                               if col not in numeric_cols_viz
+                                               and viz_df[col].nunique() <= 50]
+                    low_cardinality_box_viz = [col for col in numeric_cols_viz
+                                              if viz_df[col].nunique() <= 20]
+                    group_options_viz = ['None'] + categorical_cols_box_viz + low_cardinality_box_viz
+                    group_by_col_viz = st.selectbox(
+                        "📂 X-axis (Group by):",
+                        options=group_options_viz,
+                        key="viz_group_by_standalone",
+                        help="Select a categorical column to group the data (e.g., active/inactive)"
                     )
+                    if group_by_col_viz == 'None':
+                        group_by_col_viz = None
+                # Bar Chart - categorical X-axis
+                elif selected_chart_viz == 'Bar Chart':
+                    # Get all categorical columns for bar chart
+                    categorical_cols_bar_viz = [col for col in all_cols_viz
+                                               if col not in numeric_cols_viz
+                                               and viz_df[col].nunique() <= 50]
+                    low_cardinality_bar_viz = [col for col in numeric_cols_viz
+                                              if viz_df[col].nunique() <= 20]
+                    bar_x_options_viz = categorical_cols_bar_viz + low_cardinality_bar_viz
+                    if bar_x_options_viz:
+                        x_axis_viz = st.selectbox(
+                            "📊 X-axis (Category):",
+                            options=bar_x_options_viz,
+                            key="viz_bar_x_standalone",
+                            help="Select a categorical column for the X-axis"
+                        )
+                    else:
+                        st.warning("No categorical columns found for Bar Chart")
 
             with input_cols_viz[1]:
                 if 'y' in requires_viz:
-                    available_y_viz = [col for col in numeric_cols_viz if col != x_axis_viz] if x_axis_viz else numeric_cols_viz
+                    available_y_viz = [col for col in all_cols_viz if col != x_axis_viz] if x_axis_viz else all_cols_viz
                     y_axis_viz = st.selectbox(
                         "📈 Y-axis:",
                         options=available_y_viz,
@@ -1885,10 +2125,20 @@ elif input_mode == "Data Visualization":
                     )
                 elif selected_chart_viz in ['Histogram', 'Box Plot', 'Violin Plot']:
                     y_axis_viz = st.selectbox(
-                        "📊 Variable:",
+                        "📊 Y-axis (Variable):",
                         options=numeric_cols_viz,
                         index=0,
                         key="viz_single_var_standalone"
+                    )
+                elif selected_chart_viz == 'Bar Chart':
+                    # Y-axis options: Count (default) or a numeric column for aggregation
+                    bar_y_options_viz = ['Count'] + numeric_cols_viz
+                    y_axis_viz = st.selectbox(
+                        "📊 Y-axis (Value):",
+                        options=bar_y_options_viz,
+                        index=0,  # Default to Count
+                        key="viz_bar_y_standalone",
+                        help="Count shows frequency, or select a numeric column to show sum"
                     )
 
             with input_cols_viz[2]:
@@ -1940,16 +2190,55 @@ elif input_mode == "Data Visualization":
 
             # Size parameter for scatter plots
             size_col_viz = None
+            fixed_size_viz = 8  # Default marker size
+            size_max_viz = 20  # Default max size for column-based sizing
+            shape_col_viz = None  # Shape by column
             if selected_chart_viz == 'Scatter Plot':
                 st.markdown("**📏 Size Options:**")
-                size_options_viz = ['None'] + numeric_cols_viz
+                size_options_viz = ['Fixed Size'] + numeric_cols_viz
                 size_col_viz = st.selectbox(
                     "Size by:",
                     options=size_options_viz,
                     key="viz_size_col_standalone"
                 )
-                if size_col_viz == 'None':
+                if size_col_viz == 'Fixed Size':
+                    # Show slider for fixed marker size
+                    fixed_size_viz = st.slider(
+                        "Marker Size:",
+                        min_value=2,
+                        max_value=30,
+                        value=8,
+                        key="viz_fixed_size_standalone"
+                    )
                     size_col_viz = None
+                else:
+                    # Show slider for max size when using column-based sizing
+                    size_max_viz = st.slider(
+                        "Max Marker Size:",
+                        min_value=10,
+                        max_value=50,
+                        value=20,
+                        key="viz_size_max_standalone"
+                    )
+
+                # Shape parameter for scatter plots
+                st.markdown("**🔷 Shape Options:**")
+                # Get categorical columns (non-numeric with reasonable unique values)
+                categorical_cols_viz = [col for col in all_cols_viz
+                                       if col not in numeric_cols_viz
+                                       and viz_df[col].nunique() <= 20]
+                # Also include numeric columns with few unique values (could be categorical)
+                low_cardinality_numeric_viz = [col for col in numeric_cols_viz
+                                               if viz_df[col].nunique() <= 10]
+                shape_options_viz = ['None'] + categorical_cols_viz + low_cardinality_numeric_viz
+                shape_col_viz = st.selectbox(
+                    "Shape by:",
+                    options=shape_options_viz,
+                    key="viz_shape_col_standalone",
+                    help="Select a categorical column to differentiate points by marker shape (max 10 unique values recommended)"
+                )
+                if shape_col_viz == 'None':
+                    shape_col_viz = None
 
             # Generate visualization
             if True:  # Always generate visualization
@@ -1972,7 +2261,14 @@ elif input_mode == "Data Visualization":
 
                     # Add size parameter for scatter plots
                     if size_col_viz and selected_chart_viz == 'Scatter Plot':
+                        # Filter out NaN values in size column to avoid Plotly error
+                        plot_data_viz = plot_data_viz.dropna(subset=[size_col_viz])
                         color_param_viz['size'] = size_col_viz
+                        color_param_viz['size_max'] = size_max_viz
+
+                    # Add shape parameter for scatter plots
+                    if shape_col_viz and selected_chart_viz == 'Scatter Plot':
+                        color_param_viz['symbol'] = shape_col_viz
 
                     # Check if SMILES column is available for structure viewer
                     has_smiles_viz = st.session_state.get('viz_smiles_col') and st.session_state.viz_smiles_col in plot_data_viz.columns
@@ -1987,7 +2283,7 @@ elif input_mode == "Data Visualization":
                             # Prepare customdata using helper function
                             plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
                             color_param_viz['custom_data'] = custom_data_cols_viz
-                        
+
                         fig = px.scatter(
                             plot_data_viz,
                             x=x_axis_viz,
@@ -1997,12 +2293,17 @@ elif input_mode == "Data Visualization":
                             **color_param_viz
                         )
 
+                        # Apply fixed marker size if no size column selected
+                        if not size_col_viz:
+                            fig.update_traces(marker=dict(size=fixed_size_viz))
+
                         # Add correlation coefficient and regression stats (regardless of color column)
                         correlation = plot_data_viz[x_axis_viz].corr(plot_data_viz[y_axis_viz])
-                        
+                        correlation_valid = not pd.isna(correlation)
+
                         # Check if correlation is valid (not NaN)
-                        if pd.isna(correlation):
-                            correlation = 0.0  # Default to 0 if correlation cannot be calculated
+                        if not correlation_valid:
+                            correlation = None  # Keep as None to indicate invalid
 
                         # Calculate regression statistics if trendline is shown
                         if show_trendline_viz:
@@ -2036,13 +2337,14 @@ elif input_mode == "Data Visualization":
                                 equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
 
                                 # Add regression info
+                                corr_text = f"Correlation: {correlation:.3f}" if correlation_valid else "Correlation: N/A"
                                 fig.add_annotation(
                                     x=0.02, y=0.98,
                                     xref="paper", yref="paper",
                                     text=f"<b>Regression Statistics:</b><br>" +
                                          f"Equation: {equation}<br>" +
                                          f"R² = {r2:.3f}<br>" +
-                                         f"Correlation: {correlation:.3f}",
+                                         corr_text,
                                     showarrow=False,
                                     bgcolor="rgba(255,255,255,0.9)",
                                     bordercolor="black",
@@ -2052,7 +2354,7 @@ elif input_mode == "Data Visualization":
                                 )
                         else:
                             # Just show correlation if no trendline
-                            if not color_col_viz:  # Only show correlation box when no color to avoid clutter
+                            if not color_col_viz and correlation_valid:  # Only show if valid and no color
                                 fig.add_annotation(
                                     x=0.02, y=0.98,
                                     xref="paper", yref="paper",
@@ -2089,12 +2391,19 @@ elif input_mode == "Data Visualization":
                             # Prepare customdata using helper function
                             plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
                             color_param_viz['custom_data'] = custom_data_cols_viz
-                        
+
+                        # Build title based on grouping
+                        box_title_viz = f"Box Plot of {y_axis_viz.replace('_', ' ')}"
+                        if group_by_col_viz:
+                            box_title_viz += f" by {group_by_col_viz.replace('_', ' ')}"
+
                         fig = px.box(
                             plot_data_viz,
-                            y=y_axis_viz,
-                            title=f"Box Plot of {y_axis_viz.replace('_', ' ')}",
+                            x=group_by_col_viz,  # Group by categorical column (on X-axis)
+                            y=y_axis_viz,        # Numeric variable (on Y-axis)
+                            title=box_title_viz,
                             points="all" if show_points_viz else False,
+                            orientation='v',  # Ensure vertical orientation
                             **color_param_viz
                         )
 
@@ -2107,12 +2416,19 @@ elif input_mode == "Data Visualization":
                             # Prepare customdata using helper function
                             plot_data_viz, custom_data_cols_viz = prepare_customdata(plot_data_viz, smiles_col_name_viz, name_col_viz)
                             color_param_viz['custom_data'] = custom_data_cols_viz
-                        
+
+                        # Build title based on grouping
+                        violin_title_viz = f"Violin Plot of {y_axis_viz.replace('_', ' ')}"
+                        if group_by_col_viz:
+                            violin_title_viz += f" by {group_by_col_viz.replace('_', ' ')}"
+
                         fig = px.violin(
                             plot_data_viz,
-                            y=y_axis_viz,
-                            title=f"Violin Plot of {y_axis_viz.replace('_', ' ')}",
+                            x=group_by_col_viz,  # Group by categorical column (on X-axis)
+                            y=y_axis_viz,        # Numeric variable (on Y-axis)
+                            title=violin_title_viz,
                             points="all" if show_points_viz else False,
+                            orientation='v',  # Ensure vertical orientation
                             **color_param_viz
                         )
 
@@ -2126,6 +2442,39 @@ elif input_mode == "Data Visualization":
                             title=f"{y_axis_viz.replace('_', ' ')} over {x_axis_viz.replace('_', ' ')}",
                             **color_param_viz
                         )
+
+                    elif selected_chart_viz == 'Bar Chart' and x_axis_viz:
+                        # Bar Chart - count or aggregation
+                        # Filter color_param to only include valid bar chart params
+                        bar_color_param_viz = {}
+                        if 'color' in color_param_viz:
+                            bar_color_param_viz['color'] = color_param_viz['color']
+                        if 'color_continuous_scale' in color_param_viz:
+                            bar_color_param_viz['color_continuous_scale'] = color_param_viz['color_continuous_scale']
+
+                        if y_axis_viz == 'Count':
+                            # Count of each category
+                            bar_data_viz = plot_data_viz[x_axis_viz].value_counts().reset_index(name='Count')
+                            fig = px.bar(
+                                bar_data_viz,
+                                x=x_axis_viz,
+                                y='Count',
+                                title=f"Count by {x_axis_viz.replace('_', ' ')}",
+                                text='Count'
+                            )
+                            fig.update_traces(textposition='outside')
+                        else:
+                            # Aggregation of numeric column by category
+                            bar_data_viz = plot_data_viz.groupby(x_axis_viz)[y_axis_viz].sum().reset_index()
+                            fig = px.bar(
+                                bar_data_viz,
+                                x=x_axis_viz,
+                                y=y_axis_viz,
+                                title=f"Sum of {y_axis_viz.replace('_', ' ')} by {x_axis_viz.replace('_', ' ')}",
+                                text=y_axis_viz,
+                                **bar_color_param_viz
+                            )
+                            fig.update_traces(textposition='outside')
 
                     elif selected_chart_viz == 'Heatmap':
                         # Create correlation heatmap
@@ -2312,7 +2661,7 @@ elif input_mode == "3D Regression Analysis":
                         if st.button("Use this suggestion", key="btn_apply_suggestion"):
                             st.session_state["reg_x_var"] = top['x']
                             st.session_state["reg_y_var"] = top['y']
-                            st.experimental_rerun()
+                            st.rerun()
 
             # Clear cached results if variable selection changed
             if st.session_state.get('reg3d_vars') and st.session_state['reg3d_vars'] != (x_var, y_var, z_var):
@@ -2617,24 +2966,35 @@ elif input_mode == "3D Regression Analysis":
                         report_lines.insert(6, _line)
                     report_text = "\n".join(report_lines)
 
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.download_button(
-                            label="📄 Download Full Report (TXT)",
+                            label="📄 Download Report (TXT)",
                             data=report_text,
                             file_name=f"3D_OLS_Regression_Report_{z_var}.txt",
                             mime="text/plain"
                         )
 
+                    # Export coefficients and stats
+                    stats_dict = summary.get_statistics_dict()
+                    stats_df = pd.DataFrame([stats_dict])
                     with col2:
-                        # Export coefficients and stats
-                        stats_dict = summary.get_statistics_dict()
-                        stats_df = pd.DataFrame([stats_dict])
                         st.download_button(
-                            label="📊 Download Statistics (CSV)",
+                            label="📊 Download Stats (CSV)",
                             data=stats_df.to_csv(index=False),
                             file_name=f"3D_OLS_Statistics_{z_var}.csv",
                             mime="text/csv"
+                        )
+                    with col3:
+                        from io import BytesIO
+                        xlsx_buffer = BytesIO()
+                        stats_df.to_excel(xlsx_buffer, index=False, engine='openpyxl')
+                        xlsx_buffer.seek(0)
+                        st.download_button(
+                            label="📊 Download Stats (XLSX)",
+                            data=xlsx_buffer.getvalue(),
+                            file_name=f"3D_OLS_Statistics_{z_var}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
 
                     # Three.js view removed per request
@@ -2837,13 +3197,20 @@ elif input_mode == "3D Regression Analysis":
                     for _line in reversed(_section_lines):
                         report_lines.insert(6, _line)
                     report_text = "\n".join(report_lines)
-                    col1, col2 = st.columns(2)
+                    stats_dict = summary.get_statistics_dict()
+                    stats_df = pd.DataFrame([stats_dict])
+
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.download_button(label="📄 Download Full Report (TXT)", data=report_text, file_name=f"3D_OLS_Regression_Report_{z_var}.txt", mime="text/plain")
+                        st.download_button(label="📄 Download Report (TXT)", data=report_text, file_name=f"3D_OLS_Regression_Report_{z_var}.txt", mime="text/plain")
                     with col2:
-                        stats_dict = summary.get_statistics_dict()
-                        stats_df = pd.DataFrame([stats_dict])
-                        st.download_button(label="📊 Download Statistics (CSV)", data=stats_df.to_csv(index=False), file_name=f"3D_OLS_Statistics_{z_var}.csv", mime="text/csv")
+                        st.download_button(label="📊 Download Stats (CSV)", data=stats_df.to_csv(index=False), file_name=f"3D_OLS_Statistics_{z_var}.csv", mime="text/csv")
+                    with col3:
+                        from io import BytesIO
+                        xlsx_buffer = BytesIO()
+                        stats_df.to_excel(xlsx_buffer, index=False, engine='openpyxl')
+                        xlsx_buffer.seek(0)
+                        st.download_button(label="📊 Download Stats (XLSX)", data=xlsx_buffer.getvalue(), file_name=f"3D_OLS_Statistics_{z_var}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
                     # Three.js view removed per request
                 except Exception as e:
