@@ -13,6 +13,20 @@ import requests
 from molecular_calculator.config.settings import config
 from molecular_calculator.utils.exceptions import APIError, RateLimitError
 
+# Import rate limiter with fallback
+try:
+    from molecular_calculator.utils.rate_limiter import nih_limiter, pubchem_limiter
+    RATE_LIMITER_AVAILABLE = True
+except ImportError:
+    RATE_LIMITER_AVAILABLE = False
+
+# Import cache with fallback
+try:
+    from molecular_calculator.utils.cache import api_cache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,6 +104,14 @@ class ChemicalAPIClient:
         url = self.NIH_CIR_URL.format(inchi_key)
         logger.debug(f"Querying NIH CIR for: {inchi_key}")
 
+        # Apply rate limiting if available
+        if RATE_LIMITER_AVAILABLE:
+            if not nih_limiter.acquire():
+                raise RateLimitError(
+                    "NIH CIR rate limit reached, please wait",
+                    api_name="NIH CIR"
+                )
+
         try:
             response = requests.get(url, timeout=self.timeout)
 
@@ -141,6 +163,14 @@ class ChemicalAPIClient:
         url = self.PUBCHEM_URL.format(inchi_key)
         logger.debug(f"Querying PubChem for: {inchi_key}")
 
+        # Apply rate limiting if available
+        if RATE_LIMITER_AVAILABLE:
+            if not pubchem_limiter.acquire():
+                raise RateLimitError(
+                    "PubChem rate limit reached, please wait",
+                    api_name="PubChem"
+                )
+
         try:
             response = requests.get(url, timeout=self.timeout)
 
@@ -189,6 +219,7 @@ class ChemicalAPIClient:
         """Convert InChI Key to SMILES using external APIs.
 
         Tries NIH CIR first, then falls back to PubChem if enabled.
+        Results are cached to avoid redundant API calls.
 
         Args:
             inchi_key: InChI Key to convert
@@ -205,9 +236,19 @@ class ChemicalAPIClient:
 
         inchi_key = inchi_key.strip().upper()
 
+        # Check cache first
+        if CACHE_AVAILABLE:
+            cached = api_cache.get(f"inchi2smiles:{inchi_key}")
+            if cached is not None:
+                logger.debug(f"Cache hit for InChI Key: {inchi_key}")
+                return APIResponse(success=True, data=cached, source="cache")
+
         # Try NIH CIR first
         response = self._query_nih_cir(inchi_key)
         if response.success:
+            # Cache successful result
+            if CACHE_AVAILABLE:
+                api_cache.set(f"inchi2smiles:{inchi_key}", response.data)
             return response
 
         # Try PubChem as fallback
@@ -215,6 +256,9 @@ class ChemicalAPIClient:
             logger.debug("Falling back to PubChem")
             response = self._query_pubchem(inchi_key)
             if response.success:
+                # Cache successful result
+                if CACHE_AVAILABLE:
+                    api_cache.set(f"inchi2smiles:{inchi_key}", response.data)
                 return response
 
         return APIResponse(

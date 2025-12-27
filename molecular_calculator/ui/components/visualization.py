@@ -14,6 +14,13 @@ from typing import Optional, Set, Dict, List, Any
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
+# Import theme utilities
+try:
+    from ..theme import apply_theme, apply_3d_theme, get_color_scale, COLOR_SCALES
+    THEME_AVAILABLE = True
+except ImportError:
+    THEME_AVAILABLE = False
+
 # Import ThreeDOLSRegression from the legacy molecular_calculator.py file
 # Using importlib to avoid naming conflict with the molecular_calculator package
 import importlib.util
@@ -37,6 +44,59 @@ try:
     STRUCTURE_VIEWER_AVAILABLE = True
 except ImportError:
     STRUCTURE_VIEWER_AVAILABLE = False
+
+# Import export utilities
+try:
+    from ..utils.export import get_download_data, EXPORT_FORMATS
+    EXPORT_AVAILABLE = True
+except ImportError:
+    EXPORT_AVAILABLE = False
+
+
+def _render_export_buttons(
+    fig: go.Figure,
+    chart_type: str,
+    key_prefix: str,
+) -> None:
+    """
+    Render export buttons for a Plotly chart.
+
+    Args:
+        fig: Plotly figure to export
+        chart_type: Type of chart for filename
+        key_prefix: Unique key prefix
+    """
+    if not EXPORT_AVAILABLE:
+        return
+
+    with st.expander("📥 Export Chart", expanded=False):
+        export_cols = st.columns(4)
+
+        # Clean chart type for filename
+        base_filename = chart_type.lower().replace(' ', '_').replace('/', '_')
+
+        formats = ['png', 'svg', 'pdf', 'html']
+
+        for i, fmt in enumerate(formats):
+            with export_cols[i]:
+                try:
+                    data, mime, ext = get_download_data(fig, fmt)
+                    st.download_button(
+                        label=f"{fmt.upper()}",
+                        data=data,
+                        file_name=f"{base_filename}{ext}",
+                        mime=mime,
+                        key=f"{key_prefix}_export_{fmt}",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.button(
+                        f"{fmt.upper()}",
+                        disabled=True,
+                        key=f"{key_prefix}_export_{fmt}_disabled",
+                        help=f"Export failed: {str(e)}",
+                        use_container_width=True,
+                    )
 
 
 def render_distribution_plots(
@@ -197,7 +257,13 @@ def render_interactive_visualization(
     group_by_col = None
 
     # Variable selection based on chart type
-    num_cols = 4 if 'z' in requires else 3
+    # Add extra column for trendline toggle on scatter plots
+    if selected_chart == 'Scatter Plot':
+        num_cols = 4  # X, Y, Color, Trendline
+    elif 'z' in requires:
+        num_cols = 4
+    else:
+        num_cols = 3
     input_cols = st.columns(num_cols)
 
     with input_cols[0]:
@@ -255,19 +321,30 @@ def render_interactive_visualization(
             )
             color_col = None if color_selection == 'None' else color_selection
 
+    # Trendline toggle for Scatter Plot (next to Color by)
+    show_trendline = False
+    if selected_chart == 'Scatter Plot':
+        with input_cols[3]:
+            st.markdown("<br>", unsafe_allow_html=True)  # Add spacing to align with dropdowns
+            show_trendline = st.toggle(
+                "📈 Trendline",
+                value=False,
+                key=f"{key_prefix}_trendline",
+                help="Show OLS regression trendline with R² and equation"
+            )
+
     # Advanced options based on chart type
     size_col = None
     shape_col = None
     size_max = 20
     fixed_size = 8
-    show_trendline = True
     nbins = 30
     show_points = False
     color_scale = 'Viridis'
 
     if selected_chart == 'Scatter Plot':
         with st.expander("⚙️ Advanced Scatter Options", expanded=False):
-            adv_cols = st.columns(4)
+            adv_cols = st.columns(3)
 
             with adv_cols[0]:
                 size_options = ['None (Fixed size)'] + numeric_cols
@@ -306,13 +383,6 @@ def render_interactive_visualization(
                     help="Map marker shape to a categorical column"
                 )
                 shape_col = None if shape_selection == 'None' else shape_selection
-
-            with adv_cols[3]:
-                show_trendline = st.checkbox(
-                    "Show trendline (OLS)",
-                    value=True,
-                    key=f"{key_prefix}_trendline"
-                )
 
     elif selected_chart == 'Histogram':
         with st.expander("⚙️ Histogram Options", expanded=False):
@@ -353,9 +423,13 @@ def render_interactive_visualization(
 
     if show_color_options:
         with st.expander("🎨 Color Scale Options", expanded=False):
-            color_scales = ['Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis',
-                          'Blues', 'Reds', 'Greens', 'Purples', 'Oranges',
-                          'RdBu', 'RdYlGn', 'Spectral', 'Turbo']
+            # Use centralized color scales if available
+            if THEME_AVAILABLE:
+                color_scales = list(COLOR_SCALES.keys())
+            else:
+                color_scales = ['Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis',
+                              'Blues', 'Reds', 'Greens', 'Purples', 'Oranges',
+                              'RdBu', 'RdYlGn', 'Spectral', 'Turbo']
             color_scale = st.selectbox(
                 "Color scale:",
                 options=color_scales,
@@ -425,6 +499,9 @@ def render_interactive_visualization(
             fig = _create_heatmap(df, numeric_cols, color_scale)
 
         if fig:
+            # Apply centralized theme if available
+            if THEME_AVAILABLE:
+                fig = apply_theme(fig)
             fig.update_layout(
                 height=500,
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -432,6 +509,9 @@ def render_interactive_visualization(
             )
             st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_main_chart")
             chart_rendered = True
+
+            # Export buttons
+            _render_export_buttons(fig, selected_chart, key_prefix)
 
             # Embed structure viewer for point-based charts
             if can_show_structures and selected_chart in point_based_charts:
@@ -652,6 +732,10 @@ def _render_3d_ols_regression(
         height=700,
         showlegend=True
     )
+
+    # Apply 3D theme if available
+    if THEME_AVAILABLE:
+        fig = apply_3d_theme(fig)
 
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True}, key=f"{key_prefix}_3d_chart")
 

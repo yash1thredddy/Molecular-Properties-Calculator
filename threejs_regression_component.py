@@ -118,6 +118,13 @@ def get_threejs_regression_component(
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
             border-radius: 8px;
             overflow: hidden;
+            outline: none;
+        }}
+        #container:focus {{
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
+        }}
+        #container.focused {{
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.5);
         }}
         #canvas3d {{
             width: 100%;
@@ -169,6 +176,21 @@ def get_threejs_regression_component(
         }}
         .reset-btn:hover {{
             opacity: 0.9;
+        }}
+        .preset-btn {{
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s ease;
+        }}
+        .preset-btn:hover {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
         }}
         .stats-panel {{
             position: absolute;
@@ -262,7 +284,7 @@ def get_threejs_regression_component(
     </style>
 </head>
 <body>
-    <div id="container">
+    <div id="container" tabindex="0">
         <canvas id="canvas3d"></canvas>
 
         <div class="loading" id="loading">Loading Three.js...</div>
@@ -301,6 +323,16 @@ def get_threejs_regression_component(
             </div>
 
             <button class="reset-btn" id="resetBtn">Reset Camera</button>
+
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee;">
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">Camera Presets:</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                    <button class="preset-btn" id="viewTop" title="View from top (Y-axis)">Top</button>
+                    <button class="preset-btn" id="viewFront" title="View from front (Z-axis)">Front</button>
+                    <button class="preset-btn" id="viewSide" title="View from side (X-axis)">Side</button>
+                    <button class="preset-btn" id="viewIso" title="Isometric view">Iso</button>
+                </div>
+            </div>
         </div>
 
         <div class="stats-panel" id="stats" style="display: none;">
@@ -319,7 +351,7 @@ def get_threejs_regression_component(
         </div>
 
         <div class="instructions">
-            Drag to rotate | Scroll to zoom | Right-click to pan | Hover for details
+            Click to focus | Drag to rotate | Scroll to zoom | Right-click to pan | Keys: T/F/S/I=Views, R=Reset, Space=Rotate
         </div>
     </div>
 
@@ -379,6 +411,24 @@ def get_threejs_regression_component(
 
             const width = container.clientWidth;
             const height = container.clientHeight;
+
+            // Focus handling for keyboard shortcuts
+            container.addEventListener('click', function() {{
+                container.focus();
+            }});
+
+            container.addEventListener('focus', function() {{
+                container.classList.add('focused');
+            }});
+
+            container.addEventListener('blur', function() {{
+                container.classList.remove('focused');
+            }});
+
+            // Auto-focus on mouse enter for better UX
+            container.addEventListener('mouseenter', function() {{
+                container.focus();
+            }});
 
             // Normalize function to map data to -5 to 5 range
             function normalize(val, min, max) {{
@@ -872,6 +922,42 @@ def get_threejs_regression_component(
                 controls.update();
             }});
 
+            // Camera preset view handlers
+            function setCameraView(position, target) {{
+                camera.position.set(position.x, position.y, position.z);
+                controls.target.set(target.x, target.y, target.z);
+                camera.lookAt(target.x, target.y, target.z);
+                controls.update();
+            }}
+
+            document.getElementById('viewTop').addEventListener('click', function() {{
+                setCameraView(
+                    {{ x: 0, y: 25, z: 0 }},
+                    {{ x: 0, y: 0, z: 0 }}
+                );
+            }});
+
+            document.getElementById('viewFront').addEventListener('click', function() {{
+                setCameraView(
+                    {{ x: 0, y: 0, z: 25 }},
+                    {{ x: 0, y: 0, z: 0 }}
+                );
+            }});
+
+            document.getElementById('viewSide').addEventListener('click', function() {{
+                setCameraView(
+                    {{ x: 25, y: 0, z: 0 }},
+                    {{ x: 0, y: 0, z: 0 }}
+                );
+            }});
+
+            document.getElementById('viewIso').addEventListener('click', function() {{
+                setCameraView(
+                    {{ x: 15, y: 12, z: 15 }},
+                    {{ x: 0, y: 0, z: 0 }}
+                );
+            }});
+
             // Animation loop
             function animate() {{
                 requestAnimationFrame(animate);
@@ -890,7 +976,73 @@ def get_threejs_regression_component(
                 renderer.setSize(newWidth, newHeight);
             }});
 
+            // Keyboard navigation - listen on container for focused shortcuts
+            container.addEventListener('keydown', function(event) {{
+
+                const rotateSpeed = 0.1;
+                const zoomSpeed = 2;
+
+                switch(event.key.toLowerCase()) {{
+                    // Camera preset shortcuts
+                    case 't':
+                        setCameraView({{ x: 0, y: 25, z: 0 }}, {{ x: 0, y: 0, z: 0 }});
+                        break;
+                    case 'f':
+                        setCameraView({{ x: 0, y: 0, z: 25 }}, {{ x: 0, y: 0, z: 0 }});
+                        break;
+                    case 's':
+                        if (!event.ctrlKey) {{ // Avoid conflict with browser save
+                            setCameraView({{ x: 25, y: 0, z: 0 }}, {{ x: 0, y: 0, z: 0 }});
+                        }}
+                        break;
+                    case 'i':
+                        setCameraView({{ x: 15, y: 12, z: 15 }}, {{ x: 0, y: 0, z: 0 }});
+                        break;
+                    case 'r':
+                        // Reset camera
+                        camera.position.set(15, 12, 15);
+                        camera.lookAt(0, 0, 0);
+                        controls.target.set(0, 0, 0);
+                        controls.update();
+                        break;
+
+                    // Toggle controls
+                    case 'g':
+                        document.getElementById('gridToggle').click();
+                        break;
+                    case 'a':
+                        document.getElementById('axisToggle').click();
+                        break;
+                    case 'v':
+                        document.getElementById('residualToggle').click();
+                        break;
+                    case 'p':
+                        document.getElementById('predictedToggle').click();
+                        break;
+                    case 'o':
+                        document.getElementById('orthoToggle').click();
+                        break;
+                    case ' ':
+                        event.preventDefault();
+                        document.getElementById('autoRotateToggle').click();
+                        break;
+
+                    // Zoom with +/-
+                    case '+':
+                    case '=':
+                        camera.position.multiplyScalar(0.9);
+                        controls.update();
+                        break;
+                    case '-':
+                    case '_':
+                        camera.position.multiplyScalar(1.1);
+                        controls.update();
+                        break;
+                }}
+            }});
+
             console.log('[Three.js Regression] Scene initialized with', xData.length, 'points');
+            console.log('[Three.js Regression] Keyboard shortcuts: T=Top, F=Front, S=Side, I=Iso, R=Reset, G=Grid, A=Axes, V=Vectors, P=Predicted, O=Ortho, Space=Rotate, +/-=Zoom');
         }}
     }})();
     </script>

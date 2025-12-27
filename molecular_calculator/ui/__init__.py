@@ -28,6 +28,20 @@ from .components import (
     get_available_chart_types,
 )
 
+from .theme import (
+    ChartTheme,
+    ColorPalette,
+    DEFAULT_THEME,
+    COLOR_SCALES,
+    CHART_SIZES,
+    apply_theme,
+    apply_3d_theme,
+    get_color_scale,
+    get_categorical_colors,
+    get_chart_size,
+    inject_custom_css,
+)
+
 __all__ = [
     # Pages
     "render_single_molecule_page",
@@ -46,4 +60,16 @@ __all__ = [
     "create_3d_scatter",
     "render_chart_with_viewer",
     "get_available_chart_types",
+    # Theme
+    "ChartTheme",
+    "ColorPalette",
+    "DEFAULT_THEME",
+    "COLOR_SCALES",
+    "CHART_SIZES",
+    "apply_theme",
+    "apply_3d_theme",
+    "get_color_scale",
+    "get_categorical_colors",
+    "get_chart_size",
+    "inject_custom_css",
 ]
