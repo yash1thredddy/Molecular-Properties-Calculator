@@ -13,7 +13,19 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
 from scipy import stats
-from molecular_calculator import ThreeDOLSRegression
+
+# Import ThreeDOLSRegression from the legacy molecular_calculator.py file
+# Using importlib to avoid naming conflict with the molecular_calculator package
+import importlib.util
+import os as _os
+
+_module_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'molecular_calculator.py')
+_spec = importlib.util.spec_from_file_location("molecular_calculator_legacy", _module_path)
+if _spec is None or _spec.loader is None:
+    raise ImportError("Could not load molecular_calculator.py")
+_legacy_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_legacy_module)
+ThreeDOLSRegression = _legacy_module.ThreeDOLSRegression
 
 
 class RegressionSummary:
