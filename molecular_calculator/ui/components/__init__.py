@@ -68,6 +68,16 @@ from .visualization import (
     render_interactive_visualization,
 )
 
+from .structure_viewer import (
+    get_structure_viewer_component,
+    get_structure_viewer_hint,
+)
+
+from .threejs_regression import (
+    get_threejs_regression_component,
+    get_threejs_colorbar,
+)
+
 __all__ = [
     # File uploader
     "render_file_uploader",
@@ -122,4 +132,10 @@ __all__ = [
     # Visualization
     "render_distribution_plots",
     "render_interactive_visualization",
+    # Structure viewer
+    "get_structure_viewer_component",
+    "get_structure_viewer_hint",
+    # ThreeJS regression
+    "get_threejs_regression_component",
+    "get_threejs_colorbar",
 ]

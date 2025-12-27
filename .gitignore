@@ -138,7 +138,7 @@ logs/
 
 # Internal documentation (not for public repo)
 CLAUDE.md
-FIXES_SUMMARY.md
+
 docs/
 
 # Test/debug files
@@ -147,3 +147,5 @@ nul
 
 # Claude Code
 .claude/
+
+.devcontainer/

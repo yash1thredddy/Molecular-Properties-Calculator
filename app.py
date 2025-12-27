@@ -48,23 +48,45 @@ def main():
     # Initialize session state
     SessionState.init_defaults()
 
+    # Suppress RDKit warnings by default
+    MolecularCalculator.suppress_rdkit_warnings(True)
+
     # Title
     st.title(f"🧬 {config.APP_NAME}")
-    st.caption(f"Version {__version__}")
 
-    # Sidebar settings
+    # About section
+    with st.expander("About", expanded=False):
+        st.markdown(f"""
+        **Version:** {__version__}
+
+        Calculate physicochemical properties from molecular structures using RDKit.
+
+        **Supported Input Formats:**
+        - SMILES (Simplified Molecular Input Line Entry System)
+        - InChI (International Chemical Identifier)
+        - InChI Key (with automatic online lookup via NIH/PubChem)
+
+        **Features:**
+        - Single molecule analysis with detailed property breakdown
+        - Batch processing for CSV/Excel files
+        - Interactive data visualization with multiple chart types
+        - 3D OLS regression analysis for structure-activity relationships
+
+        **Developed by:** Yashwanth Reddy for ITR-UIC
+        """)
+
+    # Sidebar navigation
     _render_sidebar()
 
     # Get current mode
     input_mode = st.session_state.get('input_mode', 'Single Molecule')
-    enable_online_lookup = st.session_state.get('enable_online_lookup', True)
 
-    # Render appropriate page
+    # Render appropriate page (online lookup always enabled)
     if input_mode == "Single Molecule":
-        render_single_molecule_page(enable_online_lookup=enable_online_lookup)
+        render_single_molecule_page(enable_online_lookup=True)
 
     elif input_mode == "Batch Processing":
-        render_batch_processing_page(enable_online_lookup=enable_online_lookup)
+        render_batch_processing_page(enable_online_lookup=True)
 
     elif input_mode == "Data Visualization":
         _render_visualization_page()
@@ -77,34 +99,12 @@ def main():
 
 
 def _render_sidebar():
-    """Render the sidebar with settings and navigation."""
+    """Render the sidebar with navigation."""
     st.sidebar.title("Navigation")
 
-    # Settings section
-    st.sidebar.subheader("⚙️ Settings")
-
-    suppress_warnings = st.sidebar.checkbox(
-        "Suppress RDKit warnings",
-        value=True,
-        help="Hide stereochemistry conflict warnings",
-        key="suppress_warnings"
-    )
-
-    enable_online_lookup = st.sidebar.checkbox(
-        "Enable InChI Key conversion",
-        value=True,
-        help="Convert InChI Keys using online databases (NIH CIR, PubChem)",
-        key="enable_online_lookup"
-    )
-
-    # Apply settings
-    MolecularCalculator.suppress_rdkit_warnings(suppress_warnings)
-
     # Mode selection
-    st.sidebar.header("📊 Input Options")
-
-    input_mode = st.sidebar.radio(
-        "Select input mode:",
+    st.sidebar.radio(
+        "Select mode:",
         [
             "Single Molecule",
             "Batch Processing",
@@ -114,21 +114,13 @@ def _render_sidebar():
         key="input_mode"
     )
 
-    # About section
+    # Supported formats info
     st.sidebar.markdown("---")
     st.sidebar.markdown("""
-    ### About
-
-    **Molecular Properties Calculator** calculates physicochemical
-    properties from molecular structures using RDKit.
-
     **Supported Formats:**
     - SMILES
     - InChI
     - InChI Key (online lookup)
-
-    **Developed by:**
-    Yashwanth Reddy for ITR-UIC
     """)
 
 

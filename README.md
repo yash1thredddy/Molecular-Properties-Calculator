@@ -1,309 +1,149 @@
-# 🧪 Molecular Properties Calculator
+# Molecular Properties Calculator
 
-A comprehensive Streamlit web application for calculating chemical and molecular properties from molecular structures (SMILES, InChI, InChI Key).
+A web-based tool for calculating chemical and molecular properties from SMILES, InChI, and InChI Key structures. Built for researchers, medicinal chemists, and anyone working with molecular data.
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://molecular-properties-calculator.streamlit.app/)
 
-## 🚀 Features
+## What It Does
 
-### 📝 Input Formats
-- **SMILES** (Simplified Molecular Input Line Entry System)
-- **InChI** (International Chemical Identifier)
-- **InChI Key** (Automatic online database conversion via NIH CIR & PubChem)
+Drop in a molecule (or thousands of them), pick the properties you need, and get results you can export. Works with single molecules for quick lookups or batch files when you're processing compound libraries.
 
-### 📊 File Support
-- **CSV** files
-- **XLSX** (Excel) files
-- Automatic format detection
-- Flexible column naming (SMILES, Smiles, smiles, etc.)
+**Supported input formats:**
+- SMILES notation
+- InChI strings
+- InChI Keys (converted automatically via NIH/PubChem databases)
 
-### 🔬 Calculated Properties
+**File uploads:**
+- CSV and Excel files
+- Automatic column detection for common naming patterns
 
-#### Basic Properties
-- Molecular Weight (Da)
-- Heavy Atom Count
-- Total Atom Count
-- Bond Count
-- Formal Charge
+## Properties You Can Calculate
 
-#### Lipinski Rule of Five
-- LogP (Partition Coefficient)
-- Hydrogen Bond Donors
-- Hydrogen Bond Acceptors
-- Topological Polar Surface Area (TPSA)
-- Rotatable Bonds
+**Physical Properties**
+- Molecular Weight, Atom Counts, Bond Counts, Formal Charge
 
-#### Drug-likeness & Compliance
-- **QED Score** (Quantitative Estimate of Drug-likeness, 0-1 scale)
-- **Lipinski Violations** (0=compliant, 1=violates Rule of Five)
-- **Veber Violations** (0=compliant, 1=violates oral bioavailability rules)
+**Lipinski Descriptors**
+- LogP, Hydrogen Bond Donors/Acceptors, TPSA, Rotatable Bonds
 
-#### Ring Properties
-- Aromatic Rings
-- Aliphatic Rings
-- Saturated Rings
-- Total Ring Count
-- Heteroatoms
+**Drug-likeness**
+- QED Score (0-1 scale measuring how drug-like a molecule is)
+- Lipinski Rule of Five violations
+- Veber oral bioavailability violations
 
-#### Molecular Complexity
-- Bertz Complexity Index
-- Chi Connectivity Indices (Chi0, Chi1)
+**Ring Analysis**
+- Aromatic, Aliphatic, and Saturated ring counts
+- Heteroatom count
 
-#### Additional Descriptors
-- Crippen LogP & Molar Refractivity
-- Labute Approximate Surface Area
+**Complexity Indices**
+- Bertz Complexity, Chi Connectivity Indices
+- Crippen descriptors, Labute ASA
 
-### 🎯 Usage Modes
+**Ligand Efficiency**
+- LE, LLE, LELP, SILE, and other efficiency metrics
+- Requires activity data (pIC50, pKi, etc.)
 
-#### 1. Single Molecule Analysis
-- Input individual molecules
-- Interactive property selection
-- Real-time calculation
-- Visualization with charts
-- Export results as CSV
+## Getting Started
 
-#### 2. Batch Processing
-- Upload CSV/XLSX files
-- Process hundreds/thousands of molecules
-- Progress tracking
-- Summary statistics
-- Export enhanced datasets
+### Run Locally
 
-## 🛠️ Installation & Setup
-
-### Prerequisites
-- Python 3.8+
-- pip package manager
-
-### Local Installation
-
-1. **Clone the repository**
 ```bash
 git clone https://github.com/yash1threddy/molecular-properties-calculator.git
 cd molecular-properties-calculator
-```
-
-2. **Install dependencies**
-```bash
 pip install -r requirements.txt
+streamlit run app.py
 ```
 
-3. **Run the application**
-```bash
-streamlit run molecular_properties_app.py
-```
+Open `http://localhost:8501` in your browser.
 
-4. **Open in browser**
-Navigate to `http://localhost:8501`
+### Deploy to Streamlit Cloud
 
-### 🌐 Streamlit Cloud Deployment
+Fork this repo, connect it to Streamlit Cloud, and deploy. Dependencies install automatically.
 
-This app is optimized for Streamlit Cloud deployment:
+## How to Use
 
-1. Fork this repository
-2. Connect to Streamlit Cloud
-3. Deploy with one click
-4. All dependencies are automatically handled
+### Single Molecule
 
-## 📋 Usage Guide
-
-### Single Molecule Analysis
-
-1. **Select "Single Molecule" mode**
-2. **Enter molecular structure** (SMILES, InChI, or InChI Key)
-3. **Choose properties** using checkboxes:
-   - Use group checkboxes to select all properties in a category
-   - Use individual checkboxes to select specific properties
-   - Or check "Calculate All Properties"
-4. **Click "Calculate Properties"**
-5. **View results** in table and chart format
-6. **Download results** as CSV
+1. Enter your SMILES, InChI, or InChI Key
+2. Select which properties to calculate
+3. View results and download as CSV
 
 ### Batch Processing
 
-1. **Select "Batch Processing" mode**
-2. **Upload your file** (CSV or XLSX)
-3. **Verify SMILES column** is detected correctly
-4. **Select properties** to calculate
-5. **Click "Process Batch"**
-6. **Monitor progress** with progress bar
-7. **Review results** and summary statistics
-8. **Download enhanced dataset**
+1. Upload a CSV or Excel file containing molecular structures
+2. The app detects your SMILES column automatically
+3. Select properties and hit process
+4. Download results with all calculated properties appended
 
-### 📁 Input File Format
+Your input file just needs a column with molecular structures. Common column names like `SMILES`, `smiles`, `SMI`, or `CANONICAL_SMILES` are detected automatically.
 
-Your CSV/XLSX should contain molecular structures in one column. Common column names that are auto-detected:
-
-- `SMILES`, `Smiles`, `smiles`
-- `SMI`, `smi`
-- `CANONICAL_SMILES`
-
-**Example CSV:**
+**Example input:**
 ```csv
-Name,SMILES,Activity
-Aspirin,CC(=O)OC1=CC=CC=C1C(=O)O,Active
-Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Active
+Name,SMILES
+Aspirin,CC(=O)OC1=CC=CC=C1C(=O)O
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C
 ```
 
-## 🎨 Key Benefits
+## 3D Regression Analysis
 
-### ✅ User-Friendly
-- **No default selections** - choose only what you need
-- **Flexible property selection** - individual or group selection
-- **Clear explanations** - detailed property descriptions in-app
-- **Progress tracking** - real-time batch processing updates
+The app includes a 3D OLS regression tool for exploring relationships between molecular properties. Pick any three numeric properties as X, Y, and Z axes, and fit a regression plane through your data. Useful for SAR analysis and property optimization studies.
 
-### ✅ Professional
-- **Software compatibility** - works with StarDrop, Pipeline Pilot, KNIME
-- **Clean data output** - numeric values, no problematic text/boolean columns
-- **Error handling** - graceful handling of invalid molecules
-- **Performance optimized** - efficient batch processing
+## Visualization
 
-### ✅ Research-Ready
-- **Comprehensive properties** - covers most common molecular descriptors
-- **Rule compliance** - Lipinski and Veber rules built-in
-- **Export capabilities** - CSV download for further analysis
-- **Visualization** - interactive charts for data exploration
+Interactive charts built with Plotly:
+- Scatter plots, histograms, box plots, violin plots
+- Correlation heatmaps and pair plots
+- 3D scatter with regression surfaces
+- Click any data point to view its 2D structure
 
-## 🔬 Property Explanations
+## Rule Compliance
 
-### Rule Violations (Binary Indicators)
+**Lipinski Rule of Five** — A molecule passes (violation = 0) if:
+- Molecular Weight ≤ 500
+- LogP ≤ 5
+- H-bond Donors ≤ 5
+- H-bond Acceptors ≤ 10
 
-#### Lipinski Violations
-- **0** = Passes all Lipinski Rule of Five criteria:
-  - Molecular Weight ≤ 500 Da
-  - LogP ≤ 5
-  - H-bond Donors ≤ 5
-  - H-bond Acceptors ≤ 10
-- **1** = Violates at least one criterion
+**Veber Rules** — For oral bioavailability (violation = 0) if:
+- TPSA ≤ 140 Å²
+- Rotatable Bonds ≤ 10
 
-#### Veber Violations
-- **0** = Passes oral bioavailability rules:
-  - TPSA ≤ 140 Ų
-  - Rotatable Bonds ≤ 10
-- **1** = Violates at least one criterion
+## Technical Notes
 
-### QED Score
-- Range: 0.0 to 1.0
-- Higher values = more drug-like
-- Based on molecular properties and their distributions in approved drugs
-- Considers: MW, LogP, HBD, HBA, PSA, rotatable bonds, aromatic rings, alerts
+**InChI Key Conversion**
+- Primary: NIH Chemical Identifier Resolver
+- Fallback: PubChem REST API
+- Requires internet connection (can be disabled in settings)
 
-## 📊 Example Use Cases
+**Performance**
+- Handles files with thousands of molecules
+- Progress tracking for batch jobs
+- Rate limiting on external API calls
 
-### Drug Discovery
-- **Lead optimization** - calculate properties for compound series
-- **Library filtering** - identify drug-like compounds
-- **ADMET prediction** - assess absorption and permeability
+**Compatibility**
+- Output works with StarDrop, Pipeline Pilot, KNIME, and other cheminformatics tools
+- Clean numeric values, no problematic text columns
 
-### Chemical Analysis
-- **Descriptor calculation** - generate features for QSAR models
-- **Diversity analysis** - characterize chemical libraries
-- **Property profiling** - understand structure-property relationships
+## Requirements
 
-### Data Enhancement
-- **Missing properties** - add calculated descriptors to existing datasets
-- **Format standardization** - ensure consistent property calculations
-- **Quality control** - validate molecular structures and properties
+- Python 3.8+
+- RDKit for cheminformatics calculations
+- Streamlit for the web interface
+- See `requirements.txt` for full list
 
-## 🐛 Troubleshooting
+## Contributing
 
-### Common Issues
+Found a bug or have a feature request? Open an issue on GitHub. Pull requests welcome.
 
-**File Upload Problems:**
-- Ensure file is CSV or XLSX format
-- Check that SMILES column exists
-- Verify no special characters in column names
+## License
 
-**Calculation Errors:**
-- Invalid SMILES will result in empty property values
-- Some complex descriptors may not calculate for all molecules
-- Check molecule structure validity
+CC BY-NC-ND 4.0 (Creative Commons Attribution-NonCommercial-NoDerivatives 4.0)
 
-**Performance:**
-- Large files (>10K molecules) may take several minutes
-- Consider splitting very large datasets
-- Close other browser tabs for better performance
+You may share this software with attribution, but commercial use and modifications are not permitted without permission. See [LICENSE](LICENSE) for details.
 
-## 🤝 Contributing
+## Acknowledgments
 
-We welcome contributions! Please feel free to:
-
-1. Report bugs or request features via GitHub Issues
-2. Submit pull requests for improvements
-3. Share feedback and suggestions
-4. Contribute additional molecular descriptors
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **RDKit** - Open-source cheminformatics toolkit
-- **Streamlit** - Web app framework
-- **Plotly** - Interactive visualizations
-- **Pandas** - Data manipulation and analysis
-
-## 🔗 API Integration & Verification
-
-### InChI Key Conversion APIs
-
-The application integrates with two reliable database services for InChI Key conversion:
-
-#### **Primary: NIH Chemical Identifier Resolver (CIR)**
-- **URL**: `https://cactus.nci.nih.gov/chemical/structure/{inchi_key}/smiles`
-- **Status**: ✅ **Verified Working**
-- **Response Time**: ~1-3 seconds
-- **Coverage**: Comprehensive small molecule database
-
-#### **Fallback: PubChem API**
-- **URL**: `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchi_key}/property/IsomericSMILES/JSON`
-- **Status**: ✅ **Verified Working**
-- **Response Time**: ~2-5 seconds
-- **Coverage**: Extensive chemical database with 100M+ compounds
-
-### API Testing & Verification
-
-Run comprehensive API tests:
-```bash
-python test_api_verification.py
-```
-
-This verifies:
-- ✅ Both API endpoints are responsive
-- ✅ InChI Key resolution accuracy
-- ✅ Network timeout handling
-- ✅ Error resilience
-- ✅ Integration with molecular property calculations
-
-### Network Requirements
-- **Internet connection** required for InChI Key conversion
-- **Fallback mechanism** ensures reliability
-- **User control** - can be disabled in Settings for offline use
-- **Default enabled** for convenience
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yash1threddy/molecular-properties-calculator/issues)
-- **Documentation**: See the in-app "Information & Property Explanations" section
-- **API Status**: Run `python test_api_verification.py` to verify online services
+Built with RDKit, Streamlit, Plotly, and Pandas.
 
 ---
 
-**Made for the cheminformatics community**
-
-**Developed by:** Yashwanth Reddy for ITR-UIC
-**Part of:** Chemo-Informatics Toolkit as part of Dr. Guido Pauli's Team
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Install and run locally
-pip install -r requirements.txt
-streamlit run molecular_properties_app.py
-```
-
-Or try the [live demo](YOUR_STREAMLIT_CLOUD_URL_HERE) on Streamlit Cloud!
+Developed by Yashwanth Reddy | ITR-UIC | Dr. Guido Pauli's Research Group

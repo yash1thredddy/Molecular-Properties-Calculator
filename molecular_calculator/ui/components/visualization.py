@@ -21,23 +21,12 @@ try:
 except ImportError:
     THEME_AVAILABLE = False
 
-# Import ThreeDOLSRegression from the legacy molecular_calculator.py file
-# Using importlib to avoid naming conflict with the molecular_calculator package
-import importlib.util
-import os as _os
-
-_module_path = _os.path.join(
-    _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))),
-    'molecular_calculator.py'
-)
-_spec = importlib.util.spec_from_file_location("molecular_calculator_legacy", _module_path)
-_legacy_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_legacy_module)
-ThreeDOLSRegression = _legacy_module.ThreeDOLSRegression
+# Import ThreeDOLSRegression from the package models
+from molecular_calculator.models import ThreeDOLSRegression
 
 # Import structure viewer component
 try:
-    from structure_viewer_component import (
+    from molecular_calculator.ui.components.structure_viewer import (
         get_structure_viewer_component,
         get_structure_viewer_hint
     )
@@ -604,13 +593,16 @@ def _create_scatter_plot(
             x_name = x_axis.replace('_', ' ')
             equation = f"{y_name} = {slope:.3f} × {x_name} {sign} {abs(intercept):.3f}"
 
+            # Handle NaN correlation (per CLAUDE.md: don't set to 0.0, use N/A instead)
+            corr_text = f"{correlation:.3f}" if not pd.isna(correlation) else "N/A"
+
             fig.add_annotation(
                 x=0.02, y=0.98,
                 xref="paper", yref="paper",
                 text=f"<b>Regression Statistics:</b><br>" +
                      f"Equation: {equation}<br>" +
                      f"R² = {r2:.3f}<br>" +
-                     f"Correlation: {correlation:.3f}",
+                     f"Correlation: {corr_text}",
                 showarrow=False,
                 bgcolor="rgba(255,255,255,0.9)",
                 bordercolor="black",

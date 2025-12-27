@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 
 # Import the existing structure viewer
 try:
-    from structure_viewer_component import (
+    from molecular_calculator.ui.components.structure_viewer import (
         get_structure_viewer_component,
         get_structure_viewer_hint
     )

@@ -17,6 +17,11 @@ from .property_service import (
     PropertyCalculator,
     get_property_calculator,
 )
+from .ligand_efficiency import (
+    DependencyChecker,
+    LigandEfficiencyCalculator,
+    get_lei_descriptions,
+)
 
 __all__ = [
     # API Client
@@ -29,4 +34,8 @@ __all__ = [
     # Property Service
     "PropertyCalculator",
     "get_property_calculator",
+    # Ligand Efficiency
+    "DependencyChecker",
+    "LigandEfficiencyCalculator",
+    "get_lei_descriptions",
 ]

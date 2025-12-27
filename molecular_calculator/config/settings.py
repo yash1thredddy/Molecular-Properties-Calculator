@@ -2,11 +2,39 @@
 
 This module provides centralized configuration for the application.
 All magic numbers and configuration values should be defined here.
+
+Environment variables can override defaults (read at module import time):
+- MAX_FILE_SIZE_MB: Override max file size
+- API_TIMEOUT_SECONDS: Override API timeout
+- APP_VERSION: Override version string
+- MAX_ROWS_LIMIT: Override max rows limit
+- CACHE_TTL_SECONDS: Override cache TTL
+
+Note:
+    Environment variables are read when this module is first imported,
+    not when AppConfig instances are created. To change configuration
+    at runtime, set environment variables before importing this module.
 """
 
 import os
 from dataclasses import dataclass, field
 from typing import FrozenSet
+
+
+def _get_int_env(name: str, default: int) -> int:
+    """Get integer environment variable or return default."""
+    val = os.getenv(name)
+    if val is not None:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_str_env(name: str, default: str) -> str:
+    """Get string environment variable or return default."""
+    return os.getenv(name, default)
 
 
 @dataclass(frozen=True)
@@ -16,24 +44,37 @@ class AppConfig:
     This class uses frozen=True to ensure configuration values
     cannot be accidentally modified at runtime.
 
+    Important:
+        Environment variables are read at module import time (when
+        default_factory lambdas are evaluated), not at instance creation.
+        Set environment variables before importing this module.
+
     Example:
+        >>> import os
+        >>> os.environ['MAX_FILE_SIZE_MB'] = '100'  # Before import!
         >>> from molecular_calculator.config import config
-        >>> print(config.APP_NAME)
-        'Molecular Properties Calculator'
+        >>> print(config.MAX_FILE_SIZE_MB)
+        100
     """
 
     # Application info
     APP_NAME: str = "Molecular Properties Calculator"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = field(
+        default_factory=lambda: _get_str_env('APP_VERSION', "2.0.0")
+    )
     APP_ICON: str = "🧪"
 
     # File handling
-    MAX_FILE_SIZE_MB: int = 50
+    MAX_FILE_SIZE_MB: int = field(
+        default_factory=lambda: _get_int_env('MAX_FILE_SIZE_MB', 50)
+    )
     ALLOWED_EXTENSIONS: FrozenSet[str] = frozenset({'.csv', '.xlsx'})
 
     # Data limits
     MAX_ROWS_WARNING: int = 10_000
-    MAX_ROWS_LIMIT: int = 100_000
+    MAX_ROWS_LIMIT: int = field(
+        default_factory=lambda: _get_int_env('MAX_ROWS_LIMIT', 100_000)
+    )
     MAX_SMILES_LENGTH: int = 10_000
 
     # Chart defaults
@@ -46,7 +87,9 @@ class AppConfig:
     MAX_CATEGORICAL_CARDINALITY: int = 50
 
     # API settings
-    API_TIMEOUT_SECONDS: int = 10
+    API_TIMEOUT_SECONDS: int = field(
+        default_factory=lambda: _get_int_env('API_TIMEOUT_SECONDS', 10)
+    )
     MAX_RETRY_ATTEMPTS: int = 3
 
     # Rate limiting
@@ -58,7 +101,9 @@ class AppConfig:
     PUBCHEM_URL: str = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound"
 
     # Cache settings
-    CACHE_TTL_SECONDS: int = 3600  # 1 hour
+    CACHE_TTL_SECONDS: int = field(
+        default_factory=lambda: _get_int_env('CACHE_TTL_SECONDS', 3600)
+    )
     MAX_CACHE_SIZE: int = 1000
 
     @property
@@ -67,28 +112,8 @@ class AppConfig:
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
 
 
-# Singleton configuration instance
-# Use environment variables to override defaults if needed
 def _create_config() -> AppConfig:
-    """Create configuration with optional environment overrides."""
-    overrides = {}
-
-    # Check for environment variable overrides
-    if os.getenv('MAX_FILE_SIZE_MB'):
-        overrides['MAX_FILE_SIZE_MB'] = int(os.getenv('MAX_FILE_SIZE_MB'))
-
-    if os.getenv('API_TIMEOUT_SECONDS'):
-        overrides['API_TIMEOUT_SECONDS'] = int(os.getenv('API_TIMEOUT_SECONDS'))
-
-    if os.getenv('APP_VERSION'):
-        overrides['APP_VERSION'] = os.getenv('APP_VERSION')
-
-    # Create config with overrides (if frozen dataclass, need to use replace)
-    if overrides:
-        # For frozen dataclass, we need a different approach
-        # Just use defaults for now, overrides would need unfrozen class
-        pass
-
+    """Create configuration instance (environment overrides applied at construction)."""
     return AppConfig()
 
 
@@ -96,41 +121,8 @@ def _create_config() -> AppConfig:
 config = _create_config()
 
 
-# Property groups for UI organization
-PROPERTY_GROUPS = {
-    'Basic': [
-        'Molecular_Weight',
-        'ExactMolWt',
-        'HeavyAtomMolWt',
-    ],
-    'Lipophilicity': [
-        'LogP',
-        'MolLogP',
-    ],
-    'Solubility': [
-        'TPSA',
-        'LabuteASA',
-    ],
-    'H-Bonding': [
-        'HBA',
-        'HBD',
-        'NumHAcceptors',
-        'NumHDonors',
-    ],
-    'Size & Complexity': [
-        'HeavyAtomCount',
-        'NumRotatableBonds',
-        'RingCount',
-        'NumAromaticRings',
-        'FractionCSP3',
-    ],
-    'Drug-likeness': [
-        'qed',
-        'NumHeteroatoms',
-        'NHOHCount',
-        'NOCount',
-    ],
-}
+# NOTE: PROPERTY_GROUPS has been moved to molecular_calculator.models.molecule
+# Import from there if needed: from molecular_calculator.models import PROPERTY_GROUPS
 
 # Chart type definitions
 CHART_TYPES = [

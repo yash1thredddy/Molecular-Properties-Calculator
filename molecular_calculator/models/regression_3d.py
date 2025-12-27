@@ -14,18 +14,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
 from scipy import stats
 
-# Import ThreeDOLSRegression from the legacy molecular_calculator.py file
-# Using importlib to avoid naming conflict with the molecular_calculator package
-import importlib.util
-import os as _os
-
-_module_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'molecular_calculator.py')
-_spec = importlib.util.spec_from_file_location("molecular_calculator_legacy", _module_path)
-if _spec is None or _spec.loader is None:
-    raise ImportError("Could not load molecular_calculator.py")
-_legacy_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_legacy_module)
-ThreeDOLSRegression = _legacy_module.ThreeDOLSRegression
+# Import ThreeDOLSRegression from the same package
+from .regression import ThreeDOLSRegression
 
 
 class RegressionSummary:
@@ -75,9 +65,10 @@ class RegressionSummary:
 
         # R-squared and Adjusted R-squared
         self.r_squared = self.model.r_squared
-        if self.df_total > 0:
+        if self.df_total > 0 and self.df_residuals > 0:
             self.adj_r_squared = 1 - (1 - self.r_squared) * (self.df_total / self.df_residuals)
         else:
+            # Fall back to R-squared when degrees of freedom are insufficient
             self.adj_r_squared = self.r_squared
 
         # F-statistic
@@ -173,7 +164,7 @@ class RegressionSummary:
         try:
             eigenvalues = np.linalg.eigvalsh(X.T @ X)
             self.condition_number = np.sqrt(eigenvalues.max() / eigenvalues.min())
-        except:
+        except (np.linalg.LinAlgError, ValueError, ZeroDivisionError, RuntimeWarning):
             self.condition_number = np.nan
 
     def get_summary_dataframe(self) -> pd.DataFrame:

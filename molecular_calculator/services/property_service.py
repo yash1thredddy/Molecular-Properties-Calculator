@@ -245,14 +245,16 @@ class PropertyCalculator:
     def calculate(
         self,
         smiles: str,
-        selected_properties: Set[str] = None
+        selected_properties: Set[str] = None  # Reserved for future optimization
     ) -> CalculationResult:
         """Calculate molecular properties from SMILES.
 
         Args:
             smiles: SMILES string
-            selected_properties: Optional set of property names to calculate
-                                If None, calculates all properties
+            selected_properties: Reserved for future use. Currently all properties
+                                are calculated regardless of this parameter.
+                                Use calculate_as_dict() with selected_properties
+                                to filter the returned properties.
 
         Returns:
             CalculationResult with calculated properties
@@ -262,6 +264,11 @@ class PropertyCalculator:
             >>> result = calc.calculate("CCO")
             >>> print(result.properties.molecular_weight)
             46.069
+
+        Note:
+            All properties are always calculated internally due to
+            interdependencies. Use calculate_as_dict() with selected_properties
+            to get a filtered subset of properties.
         """
         if not smiles:
             return CalculationResult(
@@ -413,15 +420,21 @@ class PropertyCalculator:
 
 # Singleton instance for convenience
 _property_calculator: Optional[PropertyCalculator] = None
+_property_calculator_lock = __import__('threading').Lock()
 
 
 def get_property_calculator() -> PropertyCalculator:
     """Get the shared property calculator instance.
+
+    Thread-safe singleton accessor using double-checked locking.
 
     Returns:
         PropertyCalculator singleton instance
     """
     global _property_calculator
     if _property_calculator is None:
-        _property_calculator = PropertyCalculator()
+        with _property_calculator_lock:
+            # Double-check after acquiring lock
+            if _property_calculator is None:
+                _property_calculator = PropertyCalculator()
     return _property_calculator

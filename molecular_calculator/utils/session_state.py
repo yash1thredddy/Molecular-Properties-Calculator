@@ -8,11 +8,22 @@ with features like:
 - Mode-specific state clearing
 """
 
+import copy
 import hashlib
 import logging
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Callable
 
 logger = logging.getLogger(__name__)
+
+
+def _default_factory(value: Any) -> Callable[[], Any]:
+    """Create a factory function that returns a copy of the value.
+
+    This prevents mutable default values from being shared across sessions.
+    """
+    if isinstance(value, (list, dict, set)):
+        return lambda: copy.copy(value)
+    return lambda: value
 
 
 class SessionState:
@@ -31,20 +42,35 @@ class SessionState:
         >>> value = SessionState.get('my_key')
     """
 
-    # Default values for session state keys
-    DEFAULTS: Dict[str, Any] = {
+    # Default value factories for session state keys
+    # Using factories prevents mutable defaults from being shared across sessions
+    _DEFAULT_FACTORIES: Dict[str, Callable[[], Any]] = {
         # Data storage
+        'batch_results_df': lambda: None,
+        'current_smiles_col': lambda: None,
+        'uploaded_file_hash': lambda: None,
+        'selected_properties': lambda: [],  # Returns fresh list each time
+
+        # UI state
+        'mode': lambda: 'single',
+        'chart_type': lambda: 'Scatter Plot',
+        'show_structure': lambda: True,
+
+        # Processing state
+        'is_processing': lambda: False,
+        'last_error': lambda: None,
+    }
+
+    # Legacy DEFAULTS for backwards compatibility (read-only reference)
+    # Note: These are the default VALUES, not to be assigned directly
+    DEFAULTS: Dict[str, Any] = {
         'batch_results_df': None,
         'current_smiles_col': None,
         'uploaded_file_hash': None,
         'selected_properties': [],
-
-        # UI state
         'mode': 'single',
         'chart_type': 'Scatter Plot',
         'show_structure': True,
-
-        # Processing state
         'is_processing': False,
         'last_error': None,
     }
@@ -86,15 +112,19 @@ class SessionState:
         Call this at the start of your Streamlit app to ensure
         all expected keys exist with sensible defaults.
 
+        Uses factory functions to create fresh instances of mutable
+        defaults (like lists) to prevent cross-session contamination.
+
         Example:
             >>> # At the top of your Streamlit app
             >>> SessionState.init_defaults()
         """
         session_state = cls._get_session_state()
 
-        for key, default in cls.DEFAULTS.items():
+        for key, factory in cls._DEFAULT_FACTORIES.items():
             if key not in session_state:
-                session_state[key] = default
+                # Call factory to get a fresh instance of the default value
+                session_state[key] = factory()
                 logger.debug(f"Initialized session state key: {key}")
 
     @classmethod
@@ -201,9 +231,9 @@ class SessionState:
             return False
 
         try:
-            # Calculate file hash
+            # Calculate file hash using SHA-256 (more secure than MD5)
             file_content = file.getvalue()
-            current_hash = hashlib.md5(file_content).hexdigest()
+            current_hash = hashlib.sha256(file_content).hexdigest()
 
             # Compare with stored hash
             stored_hash = cls.get('uploaded_file_hash')

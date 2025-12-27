@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
+# Sentinel for distinguishing cached None from cache miss
+_CACHE_MISS = object()
+
 
 # ==============================================================================
 # TTL Cache Implementation
@@ -74,7 +77,8 @@ class TTLCache:
 
     def _evict_oldest(self) -> None:
         """Evict the oldest entry if cache is full."""
-        if len(self._cache) >= self.maxsize:
+        # Use > instead of >= to avoid off-by-one: evict when we need room
+        while len(self._cache) >= self.maxsize:
             oldest_key = next(iter(self._cache))
             self._cache.pop(oldest_key)
             self._timestamps.pop(oldest_key, None)
@@ -99,6 +103,28 @@ class TTLCache:
 
             self._misses += 1
             return default
+
+    def get_with_sentinel(self, key: str) -> Any:
+        """
+        Get a value from cache, returning sentinel for cache miss.
+
+        This allows distinguishing between a cached None value and
+        a cache miss.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value (including None) or _CACHE_MISS sentinel
+        """
+        with self._lock:
+            if key in self._cache and not self._is_expired(key):
+                self._cache.move_to_end(key)
+                self._hits += 1
+                return self._cache[key]
+
+            self._misses += 1
+            return _CACHE_MISS
 
     def set(self, key: str, value: Any) -> None:
         """
@@ -161,9 +187,25 @@ class TTLCache:
                 "hit_rate": hit_rate,
             }
 
+    def has_key(self, key: str) -> bool:
+        """
+        Check if key exists and is not expired (without side effects).
+
+        Unlike __contains__ or get(), this doesn't modify hit/miss counters
+        and correctly handles cached None values.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            True if key exists and is not expired
+        """
+        with self._lock:
+            return key in self._cache and not self._is_expired(key)
+
     def __contains__(self, key: str) -> bool:
-        """Check if key exists and is not expired."""
-        return self.get(key) is not None
+        """Check if key exists and is not expired (no side effects)."""
+        return self.has_key(key)
 
     def __len__(self) -> int:
         """Return number of non-expired items."""
@@ -207,16 +249,15 @@ def cached(
             else:
                 key = _make_cache_key(func.__name__, args, kwargs)
 
-            # Try to get from cache
-            result = _cache.get(key)
-            if result is not None:
+            # Try to get from cache (using sentinel to handle None values)
+            result = _cache.get_with_sentinel(key)
+            if result is not _CACHE_MISS:
                 logger.debug(f"Cache hit for {func.__name__}")
                 return result
 
-            # Calculate and cache
+            # Calculate and cache (including None results)
             result = func(*args, **kwargs)
-            if result is not None:
-                _cache.set(key, result)
+            _cache.set(key, result)
 
             return result
 
@@ -265,7 +306,7 @@ def cache_molecule(func: Callable) -> Callable:
     """
     Decorator specifically for caching molecular calculations.
 
-    Uses SMILES as the cache key.
+    Uses SMILES and all additional arguments as the cache key.
 
     Example:
         @cache_molecule
@@ -274,16 +315,15 @@ def cache_molecule(func: Callable) -> Callable:
     """
     @wraps(func)
     def wrapper(smiles: str, *args, **kwargs):
-        # Use SMILES as cache key
-        key = hashlib.md5(smiles.encode()).hexdigest()
+        # Use SMILES + args + kwargs as cache key to avoid incorrect results
+        key = _make_cache_key(func.__name__, (smiles,) + args, kwargs)
 
-        result = molecule_cache.get(key)
-        if result is not None:
+        result = molecule_cache.get_with_sentinel(key)
+        if result is not _CACHE_MISS:
             return result
 
         result = func(smiles, *args, **kwargs)
-        if result is not None:
-            molecule_cache.set(key, result)
+        molecule_cache.set(key, result)
 
         return result
 
@@ -298,6 +338,8 @@ def cache_conversion(func: Callable) -> Callable:
     """
     Decorator for caching molecular identifier conversions.
 
+    Uses identifier and all additional arguments as the cache key.
+
     Example:
         @cache_conversion
         def inchi_key_to_smiles(inchi_key):
@@ -305,15 +347,15 @@ def cache_conversion(func: Callable) -> Callable:
     """
     @wraps(func)
     def wrapper(identifier: str, *args, **kwargs):
-        key = hashlib.md5(identifier.encode()).hexdigest()
+        # Use identifier + args + kwargs as cache key to avoid incorrect results
+        key = _make_cache_key(func.__name__, (identifier,) + args, kwargs)
 
-        result = conversion_cache.get(key)
-        if result is not None:
+        result = conversion_cache.get_with_sentinel(key)
+        if result is not _CACHE_MISS:
             return result
 
         result = func(identifier, *args, **kwargs)
-        if result is not None:
-            conversion_cache.set(key, result)
+        conversion_cache.set(key, result)
 
         return result
 

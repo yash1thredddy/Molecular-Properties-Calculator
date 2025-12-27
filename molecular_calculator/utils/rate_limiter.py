@@ -50,10 +50,18 @@ class RateLimiter:
         Initialize the rate limiter.
 
         Args:
-            max_requests: Maximum requests allowed in window
-            window_seconds: Size of sliding window in seconds
+            max_requests: Maximum requests allowed in window (must be > 0)
+            window_seconds: Size of sliding window in seconds (must be > 0)
             name: Optional name for identification
+
+        Raises:
+            ValueError: If max_requests or window_seconds are invalid
         """
+        if max_requests <= 0:
+            raise ValueError("max_requests must be greater than 0")
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be greater than 0")
+
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.name = name or "RateLimiter"
@@ -84,6 +92,20 @@ class RateLimiter:
         with self._lock:
             self._timestamps.append(time.time())
 
+    def _try_acquire(self) -> bool:
+        """
+        Atomically check if allowed and record request if so.
+
+        Returns:
+            True if request was acquired, False otherwise
+        """
+        with self._lock:
+            self._cleanup_old_requests()
+            if len(self._timestamps) < self.max_requests:
+                self._timestamps.append(time.time())
+                return True
+            return False
+
     def acquire(self, blocking: bool = True, timeout: Optional[float] = None) -> bool:
         """
         Acquire permission to make a request.
@@ -101,8 +123,8 @@ class RateLimiter:
         start_time = time.time()
 
         while True:
-            if self.is_allowed():
-                self.record_request()
+            # Atomic check-and-acquire to prevent TOCTOU race condition
+            if self._try_acquire():
                 return True
 
             if not blocking:
@@ -117,9 +139,13 @@ class RateLimiter:
                 if elapsed >= timeout:
                     return False
 
-            # Wait a bit before retrying
-            wait_time = min(0.1, self.time_until_allowed())
-            time.sleep(wait_time)
+            # Wait before retrying - use calculated wait time or minimum interval
+            wait_time = self.time_until_allowed()
+            if wait_time > 0:
+                time.sleep(min(0.1, wait_time))
+            else:
+                # Small sleep to prevent busy-waiting
+                time.sleep(0.01)
 
     def time_until_allowed(self) -> float:
         """
@@ -187,23 +213,40 @@ pubchem_limiter = RateLimiter(
 # Decorator
 # ==============================================================================
 
-def rate_limited(limiter: RateLimiter, blocking: bool = True):
+def rate_limited(
+    limiter: RateLimiter,
+    blocking: bool = True,
+    timeout: Optional[float] = None
+):
     """
     Decorator to apply rate limiting to a function.
 
     Args:
         limiter: RateLimiter instance to use
         blocking: Whether to block until allowed
+        timeout: Maximum time to wait in seconds (None = no limit)
+
+    Raises:
+        RateLimitError: If rate limit exceeded (non-blocking or timeout)
 
     Example:
         @rate_limited(nih_limiter)
         def call_nih_api(inchi_key):
             ...
+
+        @rate_limited(pubchem_limiter, timeout=5.0)
+        def call_pubchem_api(cid):
+            ...
     """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            limiter.acquire(blocking=blocking)
+            acquired = limiter.acquire(blocking=blocking, timeout=timeout)
+            if not acquired:
+                # Timeout occurred
+                raise RateLimitError(
+                    f"Rate limit timeout for {limiter.name} after {timeout}s"
+                )
             return func(*args, **kwargs)
         return wrapper
     return decorator

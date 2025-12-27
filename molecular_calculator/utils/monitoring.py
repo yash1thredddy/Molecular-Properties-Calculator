@@ -10,9 +10,11 @@ import time
 import logging
 import platform
 import sys
-from typing import Dict, Any, Optional, List
+from threading import Lock
+from typing import Dict, Any, Optional, Deque
 from datetime import datetime
 from functools import wraps
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ class PerformanceMetrics:
     """
     Track performance metrics for operations.
 
+    Thread-safe metrics tracking with locking.
+
     Example:
         metrics = PerformanceMetrics()
 
@@ -35,44 +39,47 @@ class PerformanceMetrics:
     """
 
     def __init__(self):
-        self._metrics: Dict[str, List[float]] = {}
+        self._metrics: Dict[str, Deque[float]] = {}
         self._counts: Dict[str, int] = {}
         self._errors: Dict[str, int] = {}
+        self._lock = Lock()
 
     def record(self, operation: str, duration: float, success: bool = True) -> None:
-        """Record a metric for an operation."""
-        if operation not in self._metrics:
-            self._metrics[operation] = []
-            self._counts[operation] = 0
-            self._errors[operation] = 0
+        """Record a metric for an operation (thread-safe)."""
+        with self._lock:
+            if operation not in self._metrics:
+                # Use deque with maxlen for automatic size limiting
+                self._metrics[operation] = deque(maxlen=1000)
+                self._counts[operation] = 0
+                self._errors[operation] = 0
 
-        self._metrics[operation].append(duration)
-        self._counts[operation] += 1
+            self._metrics[operation].append(duration)
+            self._counts[operation] += 1
 
-        if not success:
-            self._errors[operation] += 1
-
-        # Keep only last 1000 measurements
-        if len(self._metrics[operation]) > 1000:
-            self._metrics[operation] = self._metrics[operation][-1000:]
+            if not success:
+                self._errors[operation] += 1
 
     def track(self, operation: str):
         """Context manager to track operation duration."""
         return _MetricsContext(self, operation)
 
     def get_stats(self, operation: str) -> Dict[str, Any]:
-        """Get statistics for an operation."""
-        if operation not in self._metrics:
-            return {}
+        """Get statistics for an operation (thread-safe)."""
+        with self._lock:
+            if operation not in self._metrics:
+                return {}
 
-        durations = self._metrics[operation]
+            durations = list(self._metrics[operation])  # Copy for thread safety
+            count = self._counts[operation]
+            errors = self._errors[operation]
+
         if not durations:
             return {}
 
         return {
-            "count": self._counts[operation],
-            "errors": self._errors[operation],
-            "error_rate": self._errors[operation] / self._counts[operation] if self._counts[operation] > 0 else 0,
+            "count": count,
+            "errors": errors,
+            "error_rate": errors / count if count > 0 else 0,
             "min_ms": min(durations) * 1000,
             "max_ms": max(durations) * 1000,
             "avg_ms": (sum(durations) / len(durations)) * 1000,
@@ -80,14 +87,17 @@ class PerformanceMetrics:
         }
 
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
-        """Get statistics for all operations."""
-        return {op: self.get_stats(op) for op in self._metrics}
+        """Get statistics for all operations (thread-safe)."""
+        with self._lock:
+            operations = list(self._metrics.keys())
+        return {op: self.get_stats(op) for op in operations}
 
     def reset(self) -> None:
-        """Reset all metrics."""
-        self._metrics.clear()
-        self._counts.clear()
-        self._errors.clear()
+        """Reset all metrics (thread-safe)."""
+        with self._lock:
+            self._metrics.clear()
+            self._counts.clear()
+            self._errors.clear()
 
 
 class _MetricsContext:
@@ -178,9 +188,12 @@ def check_dependencies() -> Dict[str, Dict[str, Any]]:
     # Kaleido (for chart export)
     try:
         import kaleido
-        checks["kaleido"] = {"status": "ok", "version": kaleido.__version__}
+        version = getattr(kaleido, '__version__', 'unknown')
+        checks["kaleido"] = {"status": "ok", "version": version}
     except ImportError:
         checks["kaleido"] = {"status": "warning", "message": "Not installed (chart export disabled)"}
+    except Exception:
+        checks["kaleido"] = {"status": "warning", "message": "Version check failed"}
 
     # scikit-learn
     try:
@@ -269,6 +282,10 @@ def track_performance(operation_name: Optional[str] = None):
 # Logging Utilities
 # ==============================================================================
 
+_logging_configured = False
+_logging_lock = Lock()
+
+
 def setup_logging(
     level: int = logging.INFO,
     format_string: Optional[str] = None,
@@ -276,22 +293,41 @@ def setup_logging(
     """
     Setup application logging.
 
+    Thread-safe and idempotent - safe to call multiple times.
+
     Args:
         level: Logging level
         format_string: Custom format string
     """
-    if format_string is None:
-        format_string = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    global _logging_configured
 
-    logging.basicConfig(
-        level=level,
-        format=format_string,
-        handlers=[logging.StreamHandler()]
-    )
+    with _logging_lock:
+        # Prevent duplicate handlers when called multiple times
+        if _logging_configured:
+            return
 
-    # Reduce noise from external libraries
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('requests').setLevel(logging.WARNING)
+        if format_string is None:
+            format_string = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+        # Get root logger
+        root_logger = logging.getLogger()
+
+        # Clear any existing handlers to prevent duplicates
+        if root_logger.handlers:
+            for handler in root_logger.handlers[:]:
+                root_logger.removeHandler(handler)
+
+        # Add new handler
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(format_string))
+        root_logger.addHandler(handler)
+        root_logger.setLevel(level)
+
+        # Reduce noise from external libraries
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('requests').setLevel(logging.WARNING)
+
+        _logging_configured = True
 
 
 def log_operation(

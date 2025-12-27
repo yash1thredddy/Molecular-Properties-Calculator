@@ -2,13 +2,25 @@
 # Input Sanitization Utilities
 # ==============================================================================
 """
-Input sanitization and validation utilities.
-Provides security-focused input cleaning for molecular data.
+Input sanitization utilities for molecular data.
+
+This module focuses on CLEANING and TRANSFORMING data to be safe.
+For VALIDATION (checking if data is valid), use validators.py instead.
+
+The key difference:
+- sanitize_smiles() -> cleans/transforms, returns cleaned string or None
+- InputValidator.validate_smiles() -> validates, returns ValidationResult
+
+Use sanitizer for cleaning user input before processing.
+Use validators for checking if data meets requirements.
 """
 
 import re
 import logging
 from typing import Optional, List, Any
+
+# Import shared patterns from validators to avoid duplication
+from .validators import InputValidator
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +40,10 @@ VALID_SMILES_CHARS = set(
 
 # Maximum reasonable SMILES length
 MAX_SMILES_LENGTH = 5000
+
+# Re-use patterns from validators
+INCHI_KEY_PATTERN = InputValidator.INCHI_KEY_PATTERN
+INCHI_PATTERN = InputValidator.INCHI_PATTERN
 
 
 def sanitize_smiles(smiles: str) -> Optional[str]:
@@ -103,9 +119,7 @@ def is_valid_smiles_format(smiles: str) -> bool:
 # ==============================================================================
 # InChI Sanitization
 # ==============================================================================
-
-INCHI_PATTERN = re.compile(r'^InChI=1S?/[A-Za-z0-9+\-\(\),/\.]+$')
-INCHI_KEY_PATTERN = re.compile(r'^[A-Z]{14}-[A-Z]{10}-[A-Z]$')
+# Note: INCHI_PATTERN and INCHI_KEY_PATTERN are imported from validators above
 
 
 def sanitize_inchi(inchi: str) -> Optional[str]:
@@ -354,24 +368,12 @@ def detect_identifier_type(identifier: str) -> str:
     """
     Detect the type of molecular identifier.
 
+    This is an alias for InputValidator.detect_format() for backwards compatibility.
+
     Args:
         identifier: Molecular identifier string
 
     Returns:
         Type: 'smiles', 'inchi', 'inchi_key', or 'unknown'
     """
-    if not identifier or not isinstance(identifier, str):
-        return 'unknown'
-
-    identifier = identifier.strip()
-
-    if identifier.startswith('InChI='):
-        return 'inchi'
-
-    if INCHI_KEY_PATTERN.match(identifier.upper()):
-        return 'inchi_key'
-
-    if is_valid_smiles_format(identifier):
-        return 'smiles'
-
-    return 'unknown'
+    return InputValidator.detect_format(identifier)

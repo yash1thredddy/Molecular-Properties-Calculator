@@ -315,7 +315,8 @@ class MolecularCalculator:
 
             # Skip empty values
             if pd.isna(smiles):
-                results.append({})
+                logger.warning(f"Row {idx}: Empty or NaN value in column '{smiles_col}'")
+                results.append({'_error': 'Empty or NaN value'})
                 continue
 
             smiles_str = str(smiles)
@@ -332,7 +333,9 @@ class MolecularCalculator:
                 if conversion_result.success:
                     smiles_str = conversion_result.smiles
                 else:
-                    results.append({})
+                    error_msg = conversion_result.error or 'Conversion failed'
+                    logger.warning(f"Row {idx}: Conversion failed - {error_msg}")
+                    results.append({'_error': error_msg})
                     continue
 
             # Calculate properties

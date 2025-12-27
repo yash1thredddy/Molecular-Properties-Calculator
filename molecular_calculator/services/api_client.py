@@ -5,13 +5,16 @@ databases like NIH CIR and PubChem for InChI Key to SMILES conversion.
 """
 
 import logging
-from typing import Optional
+import time
+from typing import Optional, Callable
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import requests
 
 from molecular_calculator.config.settings import config
 from molecular_calculator.utils.exceptions import APIError, RateLimitError
+from molecular_calculator.utils.sanitizer import sanitize_inchi_key
 
 # Import rate limiter with fallback
 try:
@@ -72,7 +75,65 @@ class ChemicalAPIClient:
         Args:
             timeout: Request timeout in seconds (uses config default if None)
         """
-        self.timeout = timeout or config.API_TIMEOUT
+        self.timeout = timeout or config.API_TIMEOUT_SECONDS
+
+    def _retry_with_backoff(
+        self,
+        query_func: Callable,
+        *args,
+        max_retries: int = None,
+        **kwargs
+    ) -> APIResponse:
+        """Retry an API query with exponential backoff.
+
+        Args:
+            query_func: The query function to retry
+            *args: Positional arguments for the query function
+            max_retries: Maximum number of retry attempts (uses config default if None)
+            **kwargs: Keyword arguments for the query function
+
+        Returns:
+            APIResponse from the query function
+        """
+        max_retries = max_retries or config.MAX_RETRY_ATTEMPTS
+
+        for attempt in range(max_retries):
+            try:
+                response = query_func(*args, **kwargs)
+
+                # Return on success or non-retryable failures
+                if response.success or attempt == max_retries - 1:
+                    return response
+
+                # Retry on transient failures (timeouts, connection errors)
+                if response.error and any(x in response.error.lower() for x in ['timeout', 'connection', 'network']):
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.info(f"Retry attempt {attempt + 1}/{max_retries} after {wait_time}s")
+                    time.sleep(wait_time)
+                    continue
+
+                # Don't retry other errors
+                return response
+
+            except RateLimitError:
+                # Don't retry rate limit errors
+                raise
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.info(f"Request timed out, retry {attempt + 1}/{max_retries} after {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    return APIResponse(success=False, error="Request timed out after retries")
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.info(f"Request failed: {e}, retry {attempt + 1}/{max_retries} after {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    return APIResponse(success=False, error=f"Request failed after retries: {e}")
+
+        return APIResponse(success=False, error="Max retries exceeded")
 
     def _validate_smiles(self, smiles: str) -> bool:
         """Validate that a SMILES string is parseable.
@@ -101,7 +162,8 @@ class ChemicalAPIClient:
         Returns:
             APIResponse with result
         """
-        url = self.NIH_CIR_URL.format(inchi_key)
+        # URL-encode to prevent SSRF attacks
+        url = self.NIH_CIR_URL.format(quote(inchi_key, safe=''))
         logger.debug(f"Querying NIH CIR for: {inchi_key}")
 
         # Apply rate limiting if available
@@ -160,7 +222,8 @@ class ChemicalAPIClient:
         Returns:
             APIResponse with result
         """
-        url = self.PUBCHEM_URL.format(inchi_key)
+        # URL-encode to prevent SSRF attacks
+        url = self.PUBCHEM_URL.format(quote(inchi_key, safe=''))
         logger.debug(f"Querying PubChem for: {inchi_key}")
 
         # Apply rate limiting if available
@@ -234,7 +297,15 @@ class ChemicalAPIClient:
         if not inchi_key or not isinstance(inchi_key, str):
             return APIResponse(success=False, error="Invalid InChI Key")
 
-        inchi_key = inchi_key.strip().upper()
+        # Sanitize and validate InChI Key before API calls
+        sanitized_key = sanitize_inchi_key(inchi_key)
+        if sanitized_key is None:
+            return APIResponse(
+                success=False,
+                error="Invalid InChI Key format. Expected format: XXXXXXXXXXXXXX-XXXXXXXXXX-X"
+            )
+
+        inchi_key = sanitized_key
 
         # Check cache first
         if CACHE_AVAILABLE:
@@ -243,18 +314,18 @@ class ChemicalAPIClient:
                 logger.debug(f"Cache hit for InChI Key: {inchi_key}")
                 return APIResponse(success=True, data=cached, source="cache")
 
-        # Try NIH CIR first
-        response = self._query_nih_cir(inchi_key)
+        # Try NIH CIR first with retry logic
+        response = self._retry_with_backoff(self._query_nih_cir, inchi_key)
         if response.success:
             # Cache successful result
             if CACHE_AVAILABLE:
                 api_cache.set(f"inchi2smiles:{inchi_key}", response.data)
             return response
 
-        # Try PubChem as fallback
+        # Try PubChem as fallback with retry logic
         if use_fallback:
             logger.debug("Falling back to PubChem")
-            response = self._query_pubchem(inchi_key)
+            response = self._retry_with_backoff(self._query_pubchem, inchi_key)
             if response.success:
                 # Cache successful result
                 if CACHE_AVAILABLE:
@@ -269,15 +340,21 @@ class ChemicalAPIClient:
 
 # Singleton instance for convenience
 _api_client: Optional[ChemicalAPIClient] = None
+_api_client_lock = __import__('threading').Lock()
 
 
 def get_api_client() -> ChemicalAPIClient:
     """Get the shared API client instance.
+
+    Thread-safe singleton accessor using double-checked locking.
 
     Returns:
         ChemicalAPIClient singleton instance
     """
     global _api_client
     if _api_client is None:
-        _api_client = ChemicalAPIClient()
+        with _api_client_lock:
+            # Double-check after acquiring lock
+            if _api_client is None:
+                _api_client = ChemicalAPIClient()
     return _api_client

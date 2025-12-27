@@ -23,7 +23,7 @@ from molecular_calculator.ui.components import (
 from molecular_calculator.utils.session_state import SessionState
 
 # Import LEI functionality
-from ligand_efficiency import (
+from molecular_calculator.services.ligand_efficiency import (
     DependencyChecker,
     LigandEfficiencyCalculator,
     get_lei_descriptions,

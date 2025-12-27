@@ -24,6 +24,8 @@ from molecular_calculator.models import (
     CalculationResult,
     ConversionResult,
     PROPERTY_GROUPS,
+    ThreeDOLSRegression,
+    PropertyExplanations,
 )
 
 # Service exports
@@ -56,6 +58,8 @@ __all__ = [
     "CalculationResult",
     "ConversionResult",
     "PROPERTY_GROUPS",
+    "ThreeDOLSRegression",
+    "PropertyExplanations",
     # Services
     "ConversionService",
     "PropertyCalculator",

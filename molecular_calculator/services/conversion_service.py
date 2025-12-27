@@ -269,15 +269,21 @@ class ConversionService:
 
 # Singleton instance for convenience
 _conversion_service: Optional[ConversionService] = None
+_conversion_service_lock = __import__('threading').Lock()
 
 
 def get_conversion_service() -> ConversionService:
     """Get the shared conversion service instance.
+
+    Thread-safe singleton accessor using double-checked locking.
 
     Returns:
         ConversionService singleton instance
     """
     global _conversion_service
     if _conversion_service is None:
-        _conversion_service = ConversionService()
+        with _conversion_service_lock:
+            # Double-check after acquiring lock
+            if _conversion_service is None:
+                _conversion_service = ConversionService()
     return _conversion_service

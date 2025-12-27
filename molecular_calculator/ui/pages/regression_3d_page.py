@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 # Import regression module
-from regression_3d import perform_3d_regression, RegressionSummary, suggest_best_3d_pairs
+from molecular_calculator.models.regression_3d import perform_3d_regression, RegressionSummary, suggest_best_3d_pairs
 
 
 # ============================================================================
@@ -187,7 +187,7 @@ def _render_threejs_visualization(model, summary, x_var: str, y_var: str, z_var:
     import streamlit.components.v1 as components
 
     try:
-        from threejs_regression_component import get_threejs_regression_component
+        from molecular_calculator.ui.components.threejs_regression import get_threejs_regression_component
 
         # Get predicted values
         z_predicted = model.predict(model.x, model.y)

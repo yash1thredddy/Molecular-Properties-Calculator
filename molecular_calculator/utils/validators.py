@@ -267,14 +267,17 @@ class InputValidator:
         return html.escape(text)
 
     @classmethod
-    def is_safe_input(cls, text: str) -> bool:
+    def is_safe_input(cls, text: str, is_chemical_format: bool = False) -> bool:
         """Check if input is safe (no injection attempts).
 
         Checks for common injection patterns like SQL injection
-        and script tags.
+        and script tags. When checking chemical formats (SMILES, InChI),
+        allows special characters that are valid in those formats.
 
         Args:
             text: Text to check
+            is_chemical_format: If True, skip checks that would flag
+                               valid SMILES/InChI characters
 
         Returns:
             True if input appears safe
@@ -282,17 +285,34 @@ class InputValidator:
         if not isinstance(text, str):
             return False
 
-        # Check for SQL injection patterns
-        sql_patterns = [
-            r"(--|;|'|\")",
-            r"\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b",
-        ]
-        for pattern in sql_patterns:
-            if re.search(pattern, text, re.IGNORECASE):
-                return False
-
-        # Check for script patterns
+        # Check for script patterns (always dangerous)
         if '<script' in text.lower() or 'javascript:' in text.lower():
+            return False
+
+        # For chemical formats, only check for script injection
+        # SMILES can contain: ()[]=#@+-\/. and other special chars
+        # InChI can contain: / - ( ) , ; and other delimiters
+        if is_chemical_format:
+            return True
+
+        # For non-chemical text, check for SQL injection patterns
+        # Check for SQL keywords followed by space
+        sql_keyword_pattern = r"\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE)\s+"
+        if re.search(sql_keyword_pattern, text, re.IGNORECASE):
+            return False
+
+        # Check for SQL boolean injection patterns like: ' OR '1'='1
+        # These use quotes with OR/AND keywords
+        sql_boolean_pattern = r"['\"].*\b(OR|AND)\b.*['\"]"
+        if re.search(sql_boolean_pattern, text, re.IGNORECASE):
+            return False
+
+        # Check for comment injection ending with --
+        if re.search(r'--\s*$', text):
+            return False
+
+        # Check for semicolon followed by SQL keyword (statement chaining)
+        if re.search(r';\s*(DROP|DELETE|INSERT|UPDATE|SELECT)\b', text, re.IGNORECASE):
             return False
 
         return True

@@ -15,6 +15,9 @@ from .molecule import (
     PROPERTY_GROUPS,
     LEI_PROPERTY_GROUP,
 )
+from .regression import ThreeDOLSRegression
+from .explanations import PropertyExplanations
+from .regression_3d import RegressionSummary, perform_3d_regression, suggest_best_3d_pairs
 
 __all__ = [
     # Enums
@@ -26,6 +29,13 @@ __all__ = [
     "CalculationResult",
     "ConversionResult",
     "LigandEfficiencyIndices",
+    # Regression
+    "ThreeDOLSRegression",
+    "RegressionSummary",
+    "perform_3d_regression",
+    "suggest_best_3d_pairs",
+    # Documentation
+    "PropertyExplanations",
     # Constants
     "PROPERTY_GROUPS",
     "LEI_PROPERTY_GROUP",
