@@ -695,24 +695,24 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
     st.markdown("---")
     st.markdown("### 3D Visualization")
 
-    # Visualization engine selector
+    # Visualization engine selector - Three.js is default (best quality)
     viz_engine = st.radio(
         "Visualization Engine:",
-        ["Matplotlib (Static)", "Plotly (Interactive)", "Three.js (WebGL)"],
+        ["Three.js (WebGL)", "Plotly (Interactive)", "Matplotlib (Static)"],
         horizontal=True,
         key="reg3d_viz_engine",
-        help="Matplotlib: publication-quality static plot | Plotly: interactive with controls | Three.js: smooth WebGL rendering"
+        help="Three.js: smooth WebGL rendering (recommended) | Plotly: interactive with controls | Matplotlib: publication-quality static plot"
     )
 
     if viz_engine == "Three.js (WebGL)":
-        # Use Three.js visualization
+        # Use Three.js visualization (default - best quality)
         _render_threejs_visualization(model, summary, x_var, y_var, z_var)
-    elif viz_engine == "Matplotlib (Static)":
+    elif viz_engine == "Plotly (Interactive)":
+        # Use Plotly visualization
+        _render_plotly_visualization(model, summary, x_var, y_var, z_var)
+    else:
         # Use matplotlib static visualization
         _render_matplotlib_visualization(model, summary, x_var, y_var, z_var)
-    else:
-        # Use Plotly visualization (original)
-        _render_plotly_visualization(model, summary, x_var, y_var, z_var)
 
     # Residual Analysis
     st.markdown("---")
