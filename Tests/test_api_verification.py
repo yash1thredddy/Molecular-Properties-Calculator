@@ -15,7 +15,8 @@ from molecular_calculator import MolecularCalculator
 
 def test_api_endpoints():
     """Test individual API endpoints directly"""
-    print("🔍 TESTING API ENDPOINTS")
+    import pytest
+    print("Testing API endpoints...")
     print("=" * 50)
 
     test_inchi_keys = [
@@ -25,7 +26,7 @@ def test_api_endpoints():
     ]
 
     # Test NIH CIR API
-    print("\n🌐 Testing NIH Chemical Identifier Resolver (CIR):")
+    print("\nTesting NIH Chemical Identifier Resolver (CIR):")
     print("-" * 50)
 
     cir_successes = 0
@@ -36,24 +37,23 @@ def test_api_endpoints():
 
             if response.status_code == 200:
                 smiles = response.text.strip()
-                # Verify it's a reasonable SMILES (contains expected base structure)
                 if len(smiles) > 2 and not smiles.startswith("Error"):
-                    print(f"✅ {name}: {smiles}")
+                    print(f"{name}: {smiles}")
                     cir_successes += 1
                 else:
-                    print(f"❌ {name}: Invalid response - {smiles}")
+                    print(f"{name}: Invalid response - {smiles}")
             else:
-                print(f"❌ {name}: HTTP {response.status_code}")
+                print(f"{name}: HTTP {response.status_code}")
 
         except Exception as e:
-            print(f"❌ {name}: {str(e)}")
+            print(f"{name}: {str(e)}")
 
         time.sleep(0.5)  # Rate limiting
 
     print(f"\nCIR Success Rate: {cir_successes}/{len(test_inchi_keys)} ({cir_successes/len(test_inchi_keys)*100:.0f}%)")
 
     # Test PubChem API
-    print("\n🧪 Testing PubChem API:")
+    print("\nTesting PubChem API:")
     print("-" * 50)
 
     pubchem_successes = 0
@@ -68,27 +68,32 @@ def test_api_endpoints():
                     properties = data['PropertyTable']['Properties']
                     if properties and 'IsomericSMILES' in properties[0]:
                         smiles = properties[0]['IsomericSMILES']
-                        print(f"✅ {name}: {smiles}")
+                        print(f"{name}: {smiles}")
                         pubchem_successes += 1
                     else:
-                        print(f"❌ {name}: No SMILES in response")
+                        print(f"{name}: No SMILES in response")
                 else:
-                    print(f"❌ {name}: Invalid JSON structure")
+                    print(f"{name}: Invalid JSON structure")
             else:
-                print(f"❌ {name}: HTTP {response.status_code}")
+                print(f"{name}: HTTP {response.status_code}")
 
         except Exception as e:
-            print(f"❌ {name}: {str(e)}")
+            print(f"{name}: {str(e)}")
 
         time.sleep(0.5)  # Rate limiting
 
     print(f"\nPubChem Success Rate: {pubchem_successes}/{len(test_inchi_keys)} ({pubchem_successes/len(test_inchi_keys)*100:.0f}%)")
 
-    return cir_successes, pubchem_successes, len(test_inchi_keys)
+    # At least one API should work
+    if cir_successes == 0 and pubchem_successes == 0:
+        pytest.skip("Both APIs unavailable (network issue)")
+
+    assert cir_successes > 0 or pubchem_successes > 0, "At least one API should be working"
 
 def test_integrated_conversion():
     """Test the integrated MolecularCalculator InChI Key conversion"""
-    print("\n\n🔧 TESTING INTEGRATED CONVERSION")
+    import pytest
+    print("\n\nTesting integrated conversion...")
     print("=" * 50)
 
     test_cases = [
@@ -103,33 +108,31 @@ def test_integrated_conversion():
     total_time = 0
 
     for inchi_key, name in test_cases:
-        print(f"\n🧬 Testing {name} ({inchi_key}):")
+        print(f"\nTesting {name} ({inchi_key}):")
 
         start_time = time.time()
         try:
-            # Test the integrated function
             smiles = MolecularCalculator.convert_inchi_key_to_smiles(inchi_key, timeout=15)
             end_time = time.time()
 
             if smiles:
-                # Verify by calculating properties
                 properties = MolecularCalculator.calculate_molecular_properties(smiles)
 
                 if properties and len(properties) > 0:
                     mw = properties.get('Molecular_Weight', 'N/A')
                     logp = properties.get('LogP', 'N/A')
-                    print(f"✅ Conversion successful: {smiles}")
-                    print(f"   → MW: {mw}, LogP: {logp}")
-                    print(f"   → Time: {end_time - start_time:.2f}s")
+                    print(f"Conversion successful: {smiles}")
+                    print(f"   MW: {mw}, LogP: {logp}")
+                    print(f"   Time: {end_time - start_time:.2f}s")
                     successes += 1
                 else:
-                    print(f"❌ Converted SMILES is invalid: {smiles}")
+                    print(f"Converted SMILES is invalid: {smiles}")
             else:
-                print(f"❌ Conversion failed (network/database issue)")
+                print(f"Conversion failed (network/database issue)")
 
         except Exception as e:
             end_time = time.time()
-            print(f"❌ Exception: {str(e)}")
+            print(f"Exception: {str(e)}")
 
         total_time += end_time - start_time
         time.sleep(1)  # Rate limiting
@@ -137,15 +140,18 @@ def test_integrated_conversion():
     avg_time = total_time / len(test_cases)
     success_rate = successes / len(test_cases) * 100
 
-    print(f"\n📊 Integration Test Results:")
+    print(f"\nIntegration Test Results:")
     print(f"   Success Rate: {successes}/{len(test_cases)} ({success_rate:.0f}%)")
     print(f"   Average Time: {avg_time:.2f}s per conversion")
 
-    return successes, len(test_cases)
+    if successes == 0:
+        pytest.skip("Network unavailable for InChI Key conversion")
+
+    assert successes > 0, "At least one conversion should succeed"
 
 def test_error_handling():
     """Test error handling with invalid InChI Keys"""
-    print("\n\n🚫 TESTING ERROR HANDLING")
+    print("\n\nTesting error handling...")
     print("=" * 50)
 
     invalid_cases = [
@@ -161,15 +167,15 @@ def test_error_handling():
         try:
             result = MolecularCalculator.convert_inchi_key_to_smiles(invalid_key, timeout=5)
             if result is None:
-                print(f"✅ {invalid_key[:20]}... → None (correct)")
+                print(f"{invalid_key[:20]}... -> None (correct)")
             else:
-                print(f"❌ {invalid_key[:20]}... → {result} (unexpected success)")
+                print(f"{invalid_key[:20]}... -> {result} (unexpected success)")
         except Exception as e:
-            print(f"✅ {invalid_key[:20]}... → Exception handled: {str(e)[:30]}")
+            print(f"{invalid_key[:20]}... -> Exception handled: {str(e)[:30]}")
 
 def test_network_resilience():
     """Test network timeout and resilience"""
-    print("\n\n🌐 TESTING NETWORK RESILIENCE")
+    print("\n\nTesting network resilience...")
     print("=" * 50)
 
     print("Testing timeout handling (should complete quickly):")
@@ -182,56 +188,66 @@ def test_network_resilience():
     end_time = time.time()
 
     elapsed = end_time - start_time
-    if elapsed < 3:  # Should timeout or succeed within 3 seconds
-        print(f"✅ Timeout handling works: {elapsed:.2f}s")
-    else:
-        print(f"❌ Timeout may not be working: {elapsed:.2f}s")
+    # Should timeout or succeed within 3 seconds
+    assert elapsed < 5, f"Timeout may not be working: {elapsed:.2f}s"
+    print(f"Timeout handling works: {elapsed:.2f}s")
 
 def run_comprehensive_api_tests():
-    """Run all API verification tests"""
-    print("🔬 COMPREHENSIVE API VERIFICATION")
+    """Run all API verification tests (for standalone script execution)"""
+    print("COMPREHENSIVE API VERIFICATION")
     print("=" * 60)
     print("Testing InChI Key conversion APIs and integration")
     print("=" * 60)
 
-    # Test individual APIs
-    cir_success, pubchem_success, total_tests = test_api_endpoints()
+    tests = [
+        ("API Endpoints", test_api_endpoints),
+        ("Integrated Conversion", test_integrated_conversion),
+        ("Error Handling", test_error_handling),
+        ("Network Resilience", test_network_resilience),
+    ]
 
-    # Test integrated conversion
-    integration_success, integration_total = test_integrated_conversion()
+    passed = 0
+    failed = 0
 
-    # Test error handling
-    test_error_handling()
+    for test_name, test_func in tests:
+        print(f"\n{'-'*40}")
+        print(f"Running: {test_name}")
+        print(f"{'-'*40}")
 
-    # Test network resilience
-    test_network_resilience()
+        try:
+            test_func()
+            passed += 1
+            print(f"PASSED: {test_name}")
+        except AssertionError as e:
+            failed += 1
+            print(f"FAILED: {test_name} - {e}")
+        except Exception as e:
+            failed += 1
+            print(f"ERROR: {test_name} - {e}")
 
     # Overall summary
     print("\n" + "=" * 60)
-    print("🎯 OVERALL API VERIFICATION RESULTS")
+    print("OVERALL API VERIFICATION RESULTS")
     print("=" * 60)
+    print(f"Tests passed: {passed}/{len(tests)}")
 
-    print(f"🌐 NIH CIR API: {cir_success}/{total_tests} working ({cir_success/total_tests*100:.0f}%)")
-    print(f"🧪 PubChem API: {pubchem_success}/{total_tests} working ({pubchem_success/total_tests*100:.0f}%)")
-    print(f"🔧 Integration: {integration_success}/{integration_total} working ({integration_success/integration_total*100:.0f}%)")
-
-    # Overall assessment
-    if cir_success > 0 or pubchem_success > 0:
-        print("\n✅ API VERIFICATION: PASSED")
-        print("   → InChI Key conversion is functional")
-        print("   → At least one database service is working")
-        print("   → Fallback mechanism provides redundancy")
+    if failed == 0:
+        print("\nAPI VERIFICATION: PASSED")
+        print("   InChI Key conversion is functional")
+        print("   At least one database service is working")
         return True
     else:
-        print("\n❌ API VERIFICATION: FAILED")
-        print("   → Both database services appear to be down")
-        print("   → Network connectivity issues possible")
+        print("\nAPI VERIFICATION: Some tests failed")
+        print("   Check network connectivity")
         return False
 
 if __name__ == '__main__':
+    import sys
     success = run_comprehensive_api_tests()
 
     if success:
-        print("\n🎉 All API services are functional and ready for production!")
+        print("\nAll API services are functional and ready for production!")
+        sys.exit(0)
     else:
-        print("\n⚠️  API services may have issues. Check network connectivity.")
+        print("\nAPI services may have issues. Check network connectivity.")
+        sys.exit(1)

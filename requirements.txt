@@ -16,6 +16,7 @@ rdkit>=2023.3.1
 
 # Visualization & Plotting
 plotly>=5.15.0
+kaleido>=0.2.1
 
 # Statistical Analysis & Machine Learning
 statsmodels>=0.14.0

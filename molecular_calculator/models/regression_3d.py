@@ -13,7 +13,9 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
 from scipy import stats
-from molecular_calculator import ThreeDOLSRegression
+
+# Import ThreeDOLSRegression from the same package
+from .regression import ThreeDOLSRegression
 
 
 class RegressionSummary:
@@ -63,9 +65,10 @@ class RegressionSummary:
 
         # R-squared and Adjusted R-squared
         self.r_squared = self.model.r_squared
-        if self.df_total > 0:
+        if self.df_total > 0 and self.df_residuals > 0:
             self.adj_r_squared = 1 - (1 - self.r_squared) * (self.df_total / self.df_residuals)
         else:
+            # Fall back to R-squared when degrees of freedom are insufficient
             self.adj_r_squared = self.r_squared
 
         # F-statistic
@@ -161,7 +164,7 @@ class RegressionSummary:
         try:
             eigenvalues = np.linalg.eigvalsh(X.T @ X)
             self.condition_number = np.sqrt(eigenvalues.max() / eigenvalues.min())
-        except:
+        except (np.linalg.LinAlgError, ValueError, ZeroDivisionError, RuntimeWarning):
             self.condition_number = np.nan
 
     def get_summary_dataframe(self) -> pd.DataFrame:
