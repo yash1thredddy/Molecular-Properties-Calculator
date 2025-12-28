@@ -2,7 +2,7 @@
 
 A web-based tool for calculating chemical and molecular properties from SMILES, InChI, and InChI Key structures. Built for researchers, medicinal chemists, and anyone working with molecular data.
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://molecular-properties-calculator.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://molecular-properties-calculator-2.streamlit.app/)
 
 ## What It Does
 
