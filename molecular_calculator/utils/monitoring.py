@@ -11,7 +11,7 @@ import logging
 import platform
 import sys
 from threading import Lock
-from typing import Dict, Any, Optional, Deque
+from typing import Dict, Any, Optional, Deque, Union
 from datetime import datetime
 from functools import wraps
 from collections import deque
@@ -39,7 +39,9 @@ class PerformanceMetrics:
     """
 
     def __init__(self):
+        # Timing data uses bounded deque (last 1000 measurements for memory efficiency)
         self._metrics: Dict[str, Deque[float]] = {}
+        # Counters track lifetime totals (unbounded but only integer per operation)
         self._counts: Dict[str, int] = {}
         self._errors: Dict[str, int] = {}
         self._lock = Lock()
@@ -287,16 +289,17 @@ _logging_lock = Lock()
 
 
 def setup_logging(
-    level: int = logging.INFO,
+    level: Union[int, str] = logging.INFO,
     format_string: Optional[str] = None,
 ) -> None:
     """
     Setup application logging.
 
     Thread-safe and idempotent - safe to call multiple times.
+    Delegates to the centralized config.logging_config.setup_logging.
 
     Args:
-        level: Logging level
+        level: Logging level (int or string like "INFO")
         format_string: Custom format string
     """
     global _logging_configured
@@ -306,26 +309,12 @@ def setup_logging(
         if _logging_configured:
             return
 
-        if format_string is None:
-            format_string = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        # Convert int level to string for the config version
+        level_name = logging.getLevelName(level) if isinstance(level, int) else level
 
-        # Get root logger
-        root_logger = logging.getLogger()
-
-        # Clear any existing handlers to prevent duplicates
-        if root_logger.handlers:
-            for handler in root_logger.handlers[:]:
-                root_logger.removeHandler(handler)
-
-        # Add new handler
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(format_string))
-        root_logger.addHandler(handler)
-        root_logger.setLevel(level)
-
-        # Reduce noise from external libraries
-        logging.getLogger('urllib3').setLevel(logging.WARNING)
-        logging.getLogger('requests').setLevel(logging.WARNING)
+        # Delegate to centralized logging config
+        from molecular_calculator.config.logging_config import setup_logging as config_setup_logging
+        config_setup_logging(level=level_name, log_format=format_string)
 
         _logging_configured = True
 

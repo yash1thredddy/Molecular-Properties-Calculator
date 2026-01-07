@@ -236,8 +236,8 @@ def render_file_upload_section(
     st.success(f"✅ Loaded {len(df):,} rows, {len(df.columns)} columns")
 
     # Show data preview
-    with st.expander("📋 Data Preview (first 10 rows)", expanded=True):
-        st.dataframe(df.head(10), use_container_width=True)
+    with st.expander("📋 Data Preview (first 50 rows)", expanded=True):
+        st.dataframe(df.head(50), width='stretch')
 
     # Detect and select columns
     detected_smiles = detect_smiles_column(df)

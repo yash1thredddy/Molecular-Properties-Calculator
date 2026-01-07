@@ -24,6 +24,12 @@ np.seterr(divide='ignore', invalid='ignore')
 # Import from refactored package
 from molecular_calculator import MolecularCalculator, __version__
 from molecular_calculator.config.settings import config
+from molecular_calculator.config import setup_logging
+
+# Initialize logging (INFO level by default, can be configured via environment)
+import os
+_log_level = os.environ.get('LOG_LEVEL', 'INFO')
+setup_logging(level=_log_level)
 from molecular_calculator.utils.session_state import SessionState
 
 # Import UI components

@@ -22,13 +22,25 @@ from typing import FrozenSet
 
 
 def _get_int_env(name: str, default: int) -> int:
-    """Get integer environment variable or return default."""
+    """Get integer environment variable or return default.
+
+    Args:
+        name: Environment variable name
+        default: Default value if not set or invalid
+
+    Returns:
+        The parsed integer value or the default
+    """
     val = os.getenv(name)
     if val is not None:
         try:
             return int(val)
         except ValueError:
-            pass
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Invalid integer value '{val}' for environment variable '{name}', "
+                f"using default: {default}"
+            )
     return default
 
 
@@ -136,15 +148,5 @@ CHART_TYPES = [
     'Line Plot',
 ]
 
-# Color scales for continuous data
-COLOR_SCALES = [
-    'Viridis',
-    'Plasma',
-    'Inferno',
-    'Magma',
-    'Blues',
-    'Reds',
-    'Greens',
-    'RdBu',
-    'Spectral',
-]
+# NOTE: COLOR_SCALES has been moved to molecular_calculator.ui.theme
+# Import from there if needed: from molecular_calculator.ui.theme import COLOR_SCALES

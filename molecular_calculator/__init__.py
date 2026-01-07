@@ -4,18 +4,25 @@ A production-ready application for calculating and visualizing
 molecular properties from SMILES, InChI, and InChI Key formats.
 
 Example:
+    # Recommended: Use the singleton
+    >>> from molecular_calculator import get_calculator
+    >>> calc = get_calculator()
+    >>> result = calc.calculate("CCO")
+
+    # Or create your own instance
     >>> from molecular_calculator import MolecularCalculator
     >>> calc = MolecularCalculator()
-    >>> props = calc.calculate_molecular_properties("CCO")
-    >>> print(props['Molecular_Weight'])
-    46.069
+    >>> result = calc.calculate("CCO")
+
+    # Legacy static method (backwards compatible)
+    >>> props = MolecularCalculator.calculate_molecular_properties("CCO")
 """
 
 __version__ = "2.0.0"
 __author__ = "Development Team"
 
 # Core exports
-from molecular_calculator.core import MolecularCalculator
+from molecular_calculator.core import MolecularCalculator, get_calculator
 
 # Model exports
 from molecular_calculator.models import (
@@ -52,6 +59,7 @@ __all__ = [
     "__author__",
     # Core
     "MolecularCalculator",
+    "get_calculator",
     # Models
     "InputFormat",
     "MolecularProperties",

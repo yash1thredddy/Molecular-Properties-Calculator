@@ -10,7 +10,7 @@ import functools
 import logging
 import traceback
 from contextlib import contextmanager
-from typing import Callable, Optional, Type, Tuple, Any, TypeVar
+from typing import Callable, Optional, Type, Tuple, Any
 
 import streamlit as st
 
@@ -25,9 +25,6 @@ from .exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Type variable for generic return types
-T = TypeVar('T')
 
 
 # ==============================================================================
@@ -206,15 +203,16 @@ def handle_file_errors(func: Callable) -> Callable:
 def error_boundary(
     operation_name: str = "operation",
     show_error: bool = True,
-    default_return: Any = None,
 ):
     """
     Context manager for error boundaries.
 
+    Catches and handles exceptions, optionally displaying errors in the UI.
+    Use the @handle_errors decorator if you need to return a default value.
+
     Args:
         operation_name: Name of the operation for error messages
         show_error: Whether to show error in Streamlit UI
-        default_return: Value to yield on error
 
     Example:
         with error_boundary("data processing"):

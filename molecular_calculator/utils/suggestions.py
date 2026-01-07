@@ -80,8 +80,12 @@ def detect_smiles_column(df: pd.DataFrame) -> Optional[str]:
         if df[col].dtype == 'object':
             sample = df[col].dropna().head(10)
             if len(sample) > 0:
-                # SMILES typically contain C, c, (, ), =, #, etc.
-                smiles_chars = set('CcNnOoSsPpFfClBrI()[]=#@+-0123456789')
+                # Extended SMILES character set including:
+                # - Atoms: C, c, N, n, O, o, S, s, P, p, F, Cl, Br, I, H, B, b
+                # - Bonds: -, =, #, :, /,  (stereochemistry)
+                # - Structure: (, ), [, ], ., @, %, + (ring closures, stereochemistry)
+                # - Digits for ring closures and charges
+                smiles_chars = set('CcNnOoSsPpFfHhBb()[]=#@+-.:/%\\0123456789ClBrI')
                 is_smiles_like = all(
                     set(str(val)).issubset(smiles_chars) and len(str(val)) > 5
                     for val in sample

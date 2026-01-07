@@ -139,13 +139,18 @@ class RateLimiter:
                 if elapsed >= timeout:
                     return False
 
-            # Wait before retrying - use calculated wait time or minimum interval
+            # Wait before retrying - use calculated wait time
             wait_time = self.time_until_allowed()
             if wait_time > 0:
-                time.sleep(min(0.1, wait_time))
+                # Cap sleep at 1s for responsiveness, and also by remaining timeout
+                max_sleep = 1.0
+                if timeout is not None:
+                    remaining = timeout - (time.time() - start_time)
+                    max_sleep = min(max_sleep, max(0.0, remaining))
+                time.sleep(min(max_sleep, wait_time))
             else:
-                # Small sleep to prevent busy-waiting
-                time.sleep(0.01)
+                # Small sleep to prevent busy-waiting when nearly ready
+                time.sleep(0.05)
 
     def time_until_allowed(self) -> float:
         """
