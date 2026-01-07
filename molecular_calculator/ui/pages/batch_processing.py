@@ -87,7 +87,7 @@ def render_batch_processing_page(
     else:
         st.warning("Please select at least one property or LEI to calculate.")
 
-    col1, col2 = st.columns([1, 3])
+    col1, col2, col3 = st.columns([1, 1, 2])
 
     with col1:
         process_btn = st.button(
@@ -95,6 +95,14 @@ def render_batch_processing_page(
             type="primary",
             disabled=not has_selections,
             key="batch_process_btn"
+        )
+
+    with col2:
+        use_parallel = st.checkbox(
+            "⚡ Parallel Processing",
+            value=len(df) > 50,
+            key="batch_use_parallel",
+            help="Use parallel processing for faster calculation (recommended for >50 molecules)"
         )
 
     # Process batch
@@ -105,7 +113,8 @@ def render_batch_processing_page(
             selected_properties,
             selected_leis,
             pki_col,
-            enable_online_lookup
+            enable_online_lookup,
+            use_parallel=use_parallel
         )
 
         if results_df is not None:
@@ -274,7 +283,8 @@ def _process_batch(
     selected_properties: Set[str],
     selected_leis: Set[str],
     pki_col: Optional[str],
-    enable_online_lookup: bool
+    enable_online_lookup: bool,
+    use_parallel: bool = True
 ) -> Optional[pd.DataFrame]:
     """Process a batch of molecules.
 
@@ -285,6 +295,7 @@ def _process_batch(
         selected_leis: Set of LEI names to calculate
         pki_col: Name of pKi column for LEI calculations
         enable_online_lookup: Whether to enable InChI Key lookup
+        use_parallel: Whether to use parallel processing (faster for large datasets)
 
     Returns:
         DataFrame with calculated properties
@@ -294,38 +305,53 @@ def _process_batch(
 
     try:
         total = len(df)
-        results = []
 
         # Calculate molecular properties
         if selected_properties:
             status_text.text("Calculating molecular properties...")
 
-            for i, (idx, row) in enumerate(df.iterrows()):
-                smiles = row[smiles_col]
+            if use_parallel and total > 10:
+                # Use parallel processing for larger datasets
+                def progress_callback(completed, total_count):
+                    progress = completed / total_count
+                    progress_bar.progress(progress, text=f"Processing molecule {completed}/{total_count}...")
 
-                if pd.isna(smiles):
-                    results.append({})
-                    continue
+                final_df = MolecularCalculator.process_batch_parallel(
+                    df,
+                    smiles_col,
+                    selected_properties=selected_properties,
+                    enable_online_lookup=enable_online_lookup,
+                    progress_callback=progress_callback
+                )
+            else:
+                # Use sequential processing for small datasets
+                results = []
+                for i, (idx, row) in enumerate(df.iterrows()):
+                    smiles = row[smiles_col]
 
-                # Auto-detect and convert
-                smiles_str = str(smiles)
-                props = MolecularCalculator.calculate_molecular_properties(smiles_str)
+                    if pd.isna(smiles):
+                        results.append({})
+                        continue
 
-                # Filter to selected properties
-                if props:
-                    props = {k: v for k, v in props.items() if k in selected_properties}
+                    # Auto-detect and convert
+                    smiles_str = str(smiles)
+                    props = MolecularCalculator.calculate_molecular_properties(smiles_str)
 
-                results.append(props)
+                    # Filter to selected properties
+                    if props:
+                        props = {k: v for k, v in props.items() if k in selected_properties}
 
-                # Update progress
-                progress = (i + 1) / total
-                progress_bar.progress(progress, text=f"Processing molecule {i + 1}/{total}...")
+                    results.append(props)
 
-            # Create results DataFrame
-            results_df = pd.DataFrame(results)
+                    # Update progress
+                    progress = (i + 1) / total
+                    progress_bar.progress(progress, text=f"Processing molecule {i + 1}/{total}...")
 
-            # Combine with original DataFrame
-            final_df = pd.concat([df.reset_index(drop=True), results_df], axis=1)
+                # Create results DataFrame
+                results_df = pd.DataFrame(results)
+
+                # Combine with original DataFrame
+                final_df = pd.concat([df.reset_index(drop=True), results_df], axis=1)
         else:
             final_df = df.copy()
 
@@ -390,32 +416,13 @@ def _display_batch_results(
     if 'Lipinski_Violations' in df.columns or 'Veber_Violations' in df.columns:
         render_rule_compliance_summary(df)
 
-    # Show statistics
-    if present_cols:
-        with st.expander("📊 Statistics Summary", expanded=True):
-            # Only use numeric columns for statistics
-            numeric_cols = [c for c in present_cols if df[c].dtype in ['float64', 'int64', 'float32', 'int32']]
-            if numeric_cols:
-                stats = df[numeric_cols].describe()
-                st.dataframe(stats.round(3), use_container_width=True)
+    # Show FULL results table FIRST (most important for users)
+    st.subheader("📋 Results Table")
+    st.write(f"Showing all **{len(df):,}** molecules with **{len(present_cols)}** calculated properties")
+    st.dataframe(df, width='stretch', height=400)
 
-    # Quick Distribution Analysis - using shared component
-    render_distribution_plots(df, calculated_columns, key_prefix="batch_dist")
-
-    # Interactive Visualization - using shared component
-    render_interactive_visualization(
-        df,
-        key_prefix="batch_viz",
-        smiles_col=smiles_col,
-        name_col=name_col
-    )
-
-    # Show data preview
-    st.subheader("📋 Data Preview")
-    st.dataframe(df.head(50), use_container_width=True)
-
-    # Download options
-    st.subheader("Export Results")
+    # Download options right after the table
+    st.subheader("📥 Export Results")
 
     col1, col2 = st.columns(2)
 
@@ -435,5 +442,28 @@ def _display_batch_results(
             key="batch_download_xlsx"
         )
 
+    # Show statistics
+    if present_cols:
+        st.subheader("📊 Statistics Summary")
+        # Only use numeric columns for statistics
+        numeric_cols = [c for c in present_cols if df[c].dtype in ['float64', 'int64', 'float32', 'int32']]
+        if numeric_cols:
+            stats = df[numeric_cols].describe()
+            st.dataframe(stats.round(3), width='stretch')
+
+    # Quick Distribution Analysis
+    st.markdown("---")
+    render_distribution_plots(df, calculated_columns, key_prefix="batch_dist")
+
+    # Interactive Visualization
+    st.markdown("---")
+    render_interactive_visualization(
+        df,
+        key_prefix="batch_viz",
+        smiles_col=smiles_col,
+        name_col=name_col
+    )
+
     # Property explanations
+    st.markdown("---")
     render_property_explanations()

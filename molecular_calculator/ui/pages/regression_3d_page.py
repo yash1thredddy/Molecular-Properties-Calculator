@@ -30,152 +30,13 @@ from mpl_toolkits.mplot3d import Axes3D
 # Import regression module
 from molecular_calculator.models.regression_3d import perform_3d_regression, RegressionSummary, suggest_best_3d_pairs
 
-
-# ============================================================================
-# Helper functions for 3D visualization (from legacy code)
-# ============================================================================
-
-def _add_axis_arrows(fig: go.Figure, x_range, y_range, z_range, label: bool = True):
-    """Add axis arrows to a Plotly 3D figure for better orientation.
-
-    - Uses thick Scatter3d lines for shafts and small Cone heads.
-    - Colors follow common convention: X=red, Y=green, Z=blue.
-    """
-    x0, x1 = float(x_range[0]), float(x_range[1])
-    y0, y1 = float(y_range[0]), float(y_range[1])
-    z0, z1 = float(z_range[0]), float(z_range[1])
-
-    # Compute lengths with robust fallback when range is zero
-    xr = (x1 - x0) if x1 > x0 else 1.0
-    yr = (y1 - y0) if y1 > y0 else 1.0
-    zr = (z1 - z0) if z1 > z0 else 1.0
-
-    # Arrow sizes (shaft + head fractions of range)
-    frac = 0.18
-    head_frac = 0.22
-
-    # Start at the min corner to avoid occluding the cloud
-    xs, ys, zs = x0, y0, z0
-
-    # Endpoint for shafts (slightly before full length to place heads)
-    x_end = xs + xr * (frac * (1 - head_frac))
-    y_end = ys + yr * (frac * (1 - head_frac))
-    z_end = zs + zr * (frac * (1 - head_frac))
-
-    # Colors (Plotly defaults palette for contrast on dark bg)
-    col_x = '#EF553B'  # red
-    col_y = '#00CC96'  # green
-    col_z = '#636EFA'  # blue
-
-    # Shafts: X, Y, Z
-    fig.add_trace(go.Scatter3d(x=[xs, x_end], y=[ys, ys], z=[zs, zs], mode='lines',
-                               line=dict(color=col_x, width=7), showlegend=False,
-                               hoverinfo='skip'))
-    fig.add_trace(go.Scatter3d(x=[xs, xs], y=[ys, y_end], z=[zs, zs], mode='lines',
-                               line=dict(color=col_y, width=7), showlegend=False,
-                               hoverinfo='skip'))
-    fig.add_trace(go.Scatter3d(x=[xs, xs], y=[ys, ys], z=[zs, z_end], mode='lines',
-                               line=dict(color=col_z, width=7), showlegend=False,
-                               hoverinfo='skip'))
-
-    # Heads: three small cones with constant color (single-stop colorscale)
-    fig.add_trace(go.Cone(x=[x_end], y=[ys], z=[zs], u=[xr * frac * head_frac], v=[0], w=[0],
-                          anchor='tail', sizemode='absolute', sizeref=max(xr, yr, zr) * 0.06,
-                          showscale=False, colorscale=[[0, col_x], [1, col_x]],
-                          name='X axis', hoverinfo='skip'))
-    fig.add_trace(go.Cone(x=[xs], y=[y_end], z=[zs], u=[0], v=[yr * frac * head_frac], w=[0],
-                          anchor='tail', sizemode='absolute', sizeref=max(xr, yr, zr) * 0.06,
-                          showscale=False, colorscale=[[0, col_y], [1, col_y]],
-                          name='Y axis', hoverinfo='skip'))
-    fig.add_trace(go.Cone(x=[xs], y=[ys], z=[z_end], u=[0], v=[0], w=[zr * frac * head_frac],
-                          anchor='tail', sizemode='absolute', sizeref=max(xr, yr, zr) * 0.06,
-                          showscale=False, colorscale=[[0, col_z], [1, col_z]],
-                          name='Z axis', hoverinfo='skip'))
-
-    if label:
-        # Place simple text labels slightly beyond heads
-        fig.add_trace(go.Scatter3d(x=[x_end + xr * 0.03], y=[ys], z=[zs], mode='text', text=['X'],
-                                   textfont=dict(color=col_x, size=12), showlegend=False,
-                                   hoverinfo='skip'))
-        fig.add_trace(go.Scatter3d(x=[xs], y=[y_end + yr * 0.03], z=[zs], mode='text', text=['Y'],
-                                   textfont=dict(color=col_y, size=12), showlegend=False,
-                                   hoverinfo='skip'))
-        fig.add_trace(go.Scatter3d(x=[xs], y=[ys], z=[z_end + zr * 0.03], mode='text', text=['Z'],
-                                   textfont=dict(color=col_z, size=12), showlegend=False,
-                                   hoverinfo='skip'))
-
-
-def _add_origin_crosshair(fig: go.Figure, x_range, y_range, z_range, opacity: float = 0.3):
-    """Add faint origin crosshair lines for orientation."""
-    x0, x1 = float(x_range[0]), float(x_range[1])
-    y0, y1 = float(y_range[0]), float(y_range[1])
-    z0, z1 = float(z_range[0]), float(z_range[1])
-
-    # Choose anchor values: use 0 if within range, else mid-point
-    cx = 0.0 if (x0 <= 0.0 <= x1) else (x0 + x1) / 2.0
-    cy = 0.0 if (y0 <= 0.0 <= y1) else (y0 + y1) / 2.0
-    cz = 0.0 if (z0 <= 0.0 <= z1) else (z0 + z1) / 2.0
-
-    col = 'rgba(127,140,141,1.0)'  # gray
-    width = 2
-
-    # X-axis line at y=cy, z=cz
-    fig.add_trace(go.Scatter3d(
-        x=[x0, x1], y=[cy, cy], z=[cz, cz], mode='lines',
-        line=dict(color=col, width=width), opacity=opacity, showlegend=False
-    ))
-    # Y-axis line at x=cx, z=cz
-    fig.add_trace(go.Scatter3d(
-        x=[cx, cx], y=[y0, y1], z=[cz, cz], mode='lines',
-        line=dict(color=col, width=width), opacity=opacity, showlegend=False
-    ))
-    # Z-axis line at x=cx, y=cy
-    fig.add_trace(go.Scatter3d(
-        x=[cx, cx], y=[cy, cy], z=[z0, z1], mode='lines',
-        line=dict(color=col, width=width), opacity=opacity, showlegend=False
-    ))
-
-
-def _add_residual_vectors(fig: go.Figure, x, y, z, zhat, *, color: str = '#F1C40F', width: int = 2, opacity: float = 0.7, max_vectors: int = 300):
-    """Draw residual vectors from actual (x,y,z) to predicted on plane (x,y,zhat)."""
-    x = np.asarray(x).ravel()
-    y = np.asarray(y).ravel()
-    z = np.asarray(z).ravel()
-    zhat = np.asarray(zhat).ravel()
-    n = x.shape[0]
-    if n == 0:
-        return
-    # Subsample for performance
-    if n > max_vectors:
-        idx = np.linspace(0, n - 1, max_vectors, dtype=int)
-        x, y, z, zhat = x[idx], y[idx], z[idx], zhat[idx]
-    # Build segment arrays (NaN-separated)
-    xs = np.empty(x.size * 3); xs[0::3] = x; xs[1::3] = x; xs[2::3] = np.nan
-    ys = np.empty(y.size * 3); ys[0::3] = y; ys[1::3] = y; ys[2::3] = np.nan
-    zs = np.empty(z.size * 3); zs[0::3] = z; zs[1::3] = zhat; zs[2::3] = np.nan
-    fig.add_trace(go.Scatter3d(
-        x=xs, y=ys, z=zs, mode='lines',
-        line=dict(color=color, width=width), opacity=opacity,
-        name='Residual vectors', showlegend=True
-    ))
-
-
-def _add_predicted_markers(fig: go.Figure, x, y, zhat, *, color: str = '#19D3F3', size: int = 3, opacity: float = 0.8, max_points: int = 1000):
-    """Add predicted markers on the fitted plane at (x,y,zhat)."""
-    x = np.asarray(x).ravel()
-    y = np.asarray(y).ravel()
-    zhat = np.asarray(zhat).ravel()
-    n = x.shape[0]
-    if n == 0:
-        return
-    if n > max_points:
-        idx = np.linspace(0, n - 1, max_points, dtype=int)
-        x, y, zhat = x[idx], y[idx], zhat[idx]
-    fig.add_trace(go.Scatter3d(
-        x=x, y=y, z=zhat, mode='markers',
-        marker=dict(size=size, color=color, opacity=opacity),
-        name='Predicted (on plane)', showlegend=True
-    ))
+# Import 3D visualization helpers from shared module
+from molecular_calculator.ui.components.plotly_3d_utils import (
+    add_axis_arrows,
+    add_origin_crosshair,
+    add_residual_vectors,
+    add_predicted_markers,
+)
 
 
 # ============================================================================
@@ -307,22 +168,22 @@ def _render_plotly_visualization(model, summary, x_var: str, y_var: str, z_var: 
     # Optional visualization elements
     show_axis_arrows_reg = st.checkbox("Show 3D axis arrows", value=True, key="reg_axis_arrows_plotly")
     if show_axis_arrows_reg:
-        _add_axis_arrows(fig, [x0, x1], [y0, y1], [z0, z1], label=True)
+        add_axis_arrows(fig, (x0, x1), (y0, y1), (z0, z1), show_labels=True)
 
     show_crosshair_reg = st.checkbox("Show origin crosshair", value=True, key="reg_crosshair_plotly")
     if show_crosshair_reg:
-        _add_origin_crosshair(fig, [x0, x1], [y0, y1], [z0, z1], opacity=0.25)
+        add_origin_crosshair(fig, (x0, x1), (y0, y1), (z0, z1), opacity=0.25)
 
     show_vectors_reg = st.checkbox("Show residual vectors", value=False, key="reg_residual_vectors_plotly")
     show_predicted_reg = st.checkbox("Show predicted markers", value=False, key="reg_predicted_markers_plotly")
     if show_vectors_reg or show_predicted_reg:
         zhat_pts = model.predict(model.x, model.y)
         if show_vectors_reg:
-            _add_residual_vectors(fig, model.x, model.y, model.z, zhat_pts)
+            add_residual_vectors(fig, model.x, model.y, model.z, zhat_pts)
         if show_predicted_reg:
-            _add_predicted_markers(fig, model.x, model.y, zhat_pts)
+            add_predicted_markers(fig, model.x, model.y, zhat_pts)
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     st.caption("Points are colored by their absolute residual (distance from fitted plane). Use mouse to rotate the 3D plot.")
 
 
@@ -491,9 +352,9 @@ def render_3d_regression_page():
             st.session_state.pop('reg3d_summary', None)
             st.session_state.pop('reg3d_vars', None)
 
-        st.subheader("Data Preview")
+        st.subheader("Data Preview (first 50 rows)")
         st.info(f"Loaded {len(reg_df)} rows and {len(reg_df.columns)} columns from {reg_file.name}")
-        st.dataframe(reg_df.head(10), use_container_width=True)
+        st.dataframe(reg_df.head(50), width='stretch')
 
         # Get numeric columns
         numeric_cols_reg = reg_df.select_dtypes(include=[np.number]).columns.tolist()
@@ -560,7 +421,7 @@ def render_3d_regression_page():
                         st.warning("No valid predictor pairs found. Ensure there are at least two numeric columns besides the dependent variable with enough data.")
                     else:
                         st.success(f"Suggested: X = {top['x']}, Y = {top['y']}  (Adj R^2 = {top['adj_r2']:.3f}, BIC = {top['bic']:.2f}, RMSE_CV = {top.get('rmse_cv', float('nan')):.3f}, Model = {top.get('model_spec', 'linear')})")
-                        st.dataframe(proof_df, use_container_width=True)
+                        st.dataframe(proof_df, width='stretch')
 
                         # Let user apply the suggestion to the selectboxes
                         if st.button("Use this suggestion", key="btn_apply_suggestion"):
@@ -632,7 +493,7 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
     # Coefficient table
     st.markdown("### Coefficient Table")
     coef_df = summary.get_summary_dataframe()
-    st.dataframe(coef_df, use_container_width=True)
+    st.dataframe(coef_df, width='stretch')
 
     # Key metrics in columns
     st.markdown("### Key Model Statistics")
@@ -688,7 +549,7 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
         })
 
     sig_df = pd.DataFrame(sig_data)
-    st.dataframe(sig_df, use_container_width=True)
+    st.dataframe(sig_df, width='stretch')
     st.caption("Significance codes: *** p<0.001, ** p<0.01, * p<0.05, ns: not significant")
 
     # 3D Visualization
@@ -731,7 +592,7 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
         )
         fig_res_hist.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Zero")
         fig_res_hist.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_res_hist, use_container_width=True)
+        st.plotly_chart(fig_res_hist, width='stretch')
         st.caption("Residuals should be normally distributed around zero")
 
     with col2:
@@ -756,7 +617,7 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
             showlegend=True
         ))
         fig_pred.update_layout(height=400)
-        st.plotly_chart(fig_pred, use_container_width=True)
+        st.plotly_chart(fig_pred, width='stretch')
         st.caption("Points should lie close to the diagonal line for good fit")
 
     # Diagnostic tests summary

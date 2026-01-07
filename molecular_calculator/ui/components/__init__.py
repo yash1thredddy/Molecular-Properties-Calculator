@@ -78,6 +78,14 @@ from .threejs_regression import (
     get_threejs_colorbar,
 )
 
+from .plotly_3d_utils import (
+    add_axis_arrows,
+    add_origin_crosshair,
+    add_residual_vectors,
+    add_predicted_markers,
+    create_fitted_plane_mesh,
+)
+
 __all__ = [
     # File uploader
     "render_file_uploader",
@@ -138,4 +146,10 @@ __all__ = [
     # ThreeJS regression
     "get_threejs_regression_component",
     "get_threejs_colorbar",
+    # Plotly 3D utilities
+    "add_axis_arrows",
+    "add_origin_crosshair",
+    "add_residual_vectors",
+    "add_predicted_markers",
+    "create_fitted_plane_mesh",
 ]

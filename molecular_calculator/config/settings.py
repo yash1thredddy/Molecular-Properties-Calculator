@@ -136,15 +136,5 @@ CHART_TYPES = [
     'Line Plot',
 ]
 
-# Color scales for continuous data
-COLOR_SCALES = [
-    'Viridis',
-    'Plasma',
-    'Inferno',
-    'Magma',
-    'Blues',
-    'Reds',
-    'Greens',
-    'RdBu',
-    'Spectral',
-]
+# NOTE: COLOR_SCALES has been moved to molecular_calculator.ui.theme
+# Import from there if needed: from molecular_calculator.ui.theme import COLOR_SCALES

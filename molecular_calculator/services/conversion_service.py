@@ -13,6 +13,7 @@ from rdkit import Chem
 from molecular_calculator.models import InputFormat, ConversionResult
 from molecular_calculator.services.api_client import get_api_client, ChemicalAPIClient
 from molecular_calculator.utils.exceptions import ConversionError, InvalidSMILESError
+from molecular_calculator.utils.sanitizer import sanitize_smiles, sanitize_inchi, sanitize_inchi_key
 
 logger = logging.getLogger(__name__)
 
@@ -215,14 +216,23 @@ class ConversionService:
         if input_format is None:
             input_format = self.detect_format(input_text)
 
-        # Handle each format
+        # Handle each format with sanitization
         if input_format == InputFormat.SMILES:
-            # Validate SMILES
-            mol = Chem.MolFromSmiles(input_text)
+            # Sanitize SMILES before validation
+            sanitized_smiles = sanitize_smiles(input_text)
+            if sanitized_smiles is None:
+                return ConversionResult(
+                    success=False,
+                    source_format=InputFormat.SMILES,
+                    error="SMILES sanitization failed - invalid characters"
+                )
+
+            # Validate sanitized SMILES
+            mol = Chem.MolFromSmiles(sanitized_smiles)
             if mol is not None:
                 return ConversionResult(
                     success=True,
-                    smiles=input_text,
+                    smiles=sanitized_smiles,
                     source_format=InputFormat.SMILES
                 )
             else:
@@ -233,11 +243,27 @@ class ConversionService:
                 )
 
         elif input_format == InputFormat.INCHI:
-            return self._convert_inchi_to_smiles(input_text)
+            # Sanitize InChI before conversion
+            sanitized_inchi = sanitize_inchi(input_text)
+            if sanitized_inchi is None:
+                return ConversionResult(
+                    success=False,
+                    source_format=InputFormat.INCHI,
+                    error="InChI sanitization failed - invalid format"
+                )
+            return self._convert_inchi_to_smiles(sanitized_inchi)
 
         elif input_format == InputFormat.INCHI_KEY:
+            # Sanitize InChI Key before conversion
+            sanitized_key = sanitize_inchi_key(input_text)
+            if sanitized_key is None:
+                return ConversionResult(
+                    success=False,
+                    source_format=InputFormat.INCHI_KEY,
+                    error="InChI Key sanitization failed - invalid format"
+                )
             return self._convert_inchi_key_to_smiles(
-                input_text,
+                sanitized_key,
                 enable_online_lookup=enable_online_lookup
             )
 

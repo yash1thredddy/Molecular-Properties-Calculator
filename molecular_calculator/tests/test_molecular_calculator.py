@@ -4,12 +4,15 @@ This module tests the core molecular calculator functionality including:
 - Property calculation
 - Format conversion
 - Batch processing
+- Singleton pattern
+- Parallel processing
+- Input sanitization
 """
 
 import pytest
 import pandas as pd
 
-from molecular_calculator.core import MolecularCalculator
+from molecular_calculator.core import MolecularCalculator, get_calculator
 from molecular_calculator.models import (
     InputFormat,
     MolecularProperties,
@@ -20,6 +23,14 @@ from molecular_calculator.models import (
 from molecular_calculator.services import (
     ConversionService,
     PropertyCalculator,
+)
+from molecular_calculator.utils.sanitizer import (
+    sanitize_smiles,
+    sanitize_inchi,
+    sanitize_inchi_key,
+    sanitize_column_name,
+    sanitize_filename,
+    sanitize_html,
 )
 
 
@@ -447,3 +458,302 @@ class TestMolecularProperties:
         assert props.molecular_weight == 46.069
         assert props.heavy_atom_count == 3
         assert props.logp == -0.14
+
+
+# ============================================================================
+# Singleton Pattern Tests
+# ============================================================================
+
+class TestGetCalculator:
+    """Tests for get_calculator() singleton function."""
+
+    def test_get_calculator_returns_instance(self):
+        """Test that get_calculator returns a MolecularCalculator instance."""
+        calc = get_calculator()
+        assert isinstance(calc, MolecularCalculator)
+
+    def test_get_calculator_returns_same_instance(self):
+        """Test that get_calculator returns the same instance each time."""
+        calc1 = get_calculator()
+        calc2 = get_calculator()
+        assert calc1 is calc2
+
+    def test_get_calculator_is_functional(self):
+        """Test that the singleton can calculate properties."""
+        calc = get_calculator()
+        result = calc.calculate("CCO")
+        assert result.success
+        assert result.properties.molecular_weight is not None
+
+
+# ============================================================================
+# Parallel Processing Tests
+# ============================================================================
+
+class TestParallelBatchProcessing:
+    """Tests for process_batch_parallel() method."""
+
+    def test_parallel_batch_basic(self):
+        """Test basic parallel batch processing."""
+        df = pd.DataFrame({
+            'SMILES': ['C', 'CC', 'CCO', 'c1ccccc1'],
+            'Name': ['Methane', 'Ethane', 'Ethanol', 'Benzene']
+        })
+
+        result = MolecularCalculator.process_batch_parallel(df, 'SMILES')
+
+        assert 'Molecular_Weight' in result.columns
+        assert len(result) == 4
+        # Check ethanol MW
+        assert abs(result.loc[2, 'Molecular_Weight'] - 46.069) < 0.01
+
+    def test_parallel_batch_with_selection(self):
+        """Test parallel batch with property selection."""
+        df = pd.DataFrame({
+            'SMILES': ['CCO', 'c1ccccc1'],
+            'Name': ['Ethanol', 'Benzene']
+        })
+
+        result = MolecularCalculator.process_batch_parallel(
+            df,
+            'SMILES',
+            selected_properties={'Molecular_Weight', 'LogP'}
+        )
+
+        assert 'Molecular_Weight' in result.columns
+        assert 'LogP' in result.columns
+
+    def test_parallel_batch_handles_invalid(self):
+        """Test parallel batch handles invalid SMILES."""
+        df = pd.DataFrame({
+            'SMILES': ['CCO', 'invalid_smiles', 'c1ccccc1'],
+            'Name': ['Ethanol', 'Invalid', 'Benzene']
+        })
+
+        result = MolecularCalculator.process_batch_parallel(df, 'SMILES')
+
+        assert len(result) == 3
+        # Valid molecules should have MW
+        assert pd.notna(result.loc[0, 'Molecular_Weight'])
+        assert pd.notna(result.loc[2, 'Molecular_Weight'])
+
+    def test_parallel_batch_handles_nan(self):
+        """Test parallel batch handles NaN values."""
+        df = pd.DataFrame({
+            'SMILES': ['CCO', None, 'c1ccccc1'],
+            'Name': ['Ethanol', 'Missing', 'Benzene']
+        })
+
+        result = MolecularCalculator.process_batch_parallel(df, 'SMILES')
+
+        assert len(result) == 3
+        assert pd.notna(result.loc[0, 'Molecular_Weight'])
+        assert pd.notna(result.loc[2, 'Molecular_Weight'])
+
+    def test_parallel_batch_progress_callback(self):
+        """Test progress callback is called."""
+        df = pd.DataFrame({
+            'SMILES': ['C', 'CC', 'CCO'],
+            'Name': ['Methane', 'Ethane', 'Ethanol']
+        })
+
+        progress_calls = []
+
+        def callback(completed, total):
+            progress_calls.append((completed, total))
+
+        MolecularCalculator.process_batch_parallel(
+            df,
+            'SMILES',
+            progress_callback=callback
+        )
+
+        assert len(progress_calls) == 3
+        assert progress_calls[-1] == (3, 3)
+
+    def test_parallel_batch_preserves_order(self):
+        """Test parallel processing preserves row order."""
+        df = pd.DataFrame({
+            'SMILES': ['C', 'CC', 'CCC', 'CCCC', 'CCCCC'],
+            'ID': [1, 2, 3, 4, 5]
+        })
+
+        result = MolecularCalculator.process_batch_parallel(df, 'SMILES')
+
+        # Check order is preserved
+        assert list(result['ID']) == [1, 2, 3, 4, 5]
+        # Check MW increases with chain length
+        mws = result['Molecular_Weight'].tolist()
+        assert mws == sorted(mws)
+
+
+# ============================================================================
+# Input Sanitization Tests
+# ============================================================================
+
+class TestSanitization:
+    """Tests for input sanitization functions."""
+
+    # SMILES Sanitization
+    def test_sanitize_smiles_valid(self):
+        """Test sanitizing valid SMILES."""
+        assert sanitize_smiles("CCO") == "CCO"
+        assert sanitize_smiles("c1ccccc1") == "c1ccccc1"
+        assert sanitize_smiles("  CCO  ") == "CCO"
+
+    def test_sanitize_smiles_removes_invalid_chars(self):
+        """Test that invalid characters are removed."""
+        # These contain invalid characters that should be stripped
+        result = sanitize_smiles("CCO!")
+        assert result is not None
+        assert "!" not in result
+
+    def test_sanitize_smiles_empty(self):
+        """Test sanitizing empty SMILES."""
+        assert sanitize_smiles("") is None
+        assert sanitize_smiles("   ") is None
+        assert sanitize_smiles(None) is None
+
+    def test_sanitize_smiles_too_long(self):
+        """Test sanitizing overly long SMILES."""
+        long_smiles = "C" * 6000
+        assert sanitize_smiles(long_smiles) is None
+
+    # InChI Sanitization
+    def test_sanitize_inchi_valid(self):
+        """Test sanitizing valid InChI."""
+        inchi = "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"
+        assert sanitize_inchi(inchi) == inchi
+
+    def test_sanitize_inchi_with_whitespace(self):
+        """Test sanitizing InChI with whitespace."""
+        inchi = "  InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3  "
+        assert sanitize_inchi(inchi) == "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"
+
+    def test_sanitize_inchi_invalid_prefix(self):
+        """Test sanitizing InChI without proper prefix."""
+        assert sanitize_inchi("1S/C2H6O/c1-2-3") is None
+        assert sanitize_inchi("INCHI=1S/C2H6O/c1-2-3") is None
+
+    def test_sanitize_inchi_empty(self):
+        """Test sanitizing empty InChI."""
+        assert sanitize_inchi("") is None
+        assert sanitize_inchi(None) is None
+
+    # InChI Key Sanitization
+    def test_sanitize_inchi_key_valid(self):
+        """Test sanitizing valid InChI Key."""
+        key = "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
+        assert sanitize_inchi_key(key) == key
+
+    def test_sanitize_inchi_key_lowercase(self):
+        """Test InChI Key is converted to uppercase."""
+        key = "lfqscwfljhtthz-uhfffaoysa-n"
+        assert sanitize_inchi_key(key) == "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
+
+    def test_sanitize_inchi_key_with_whitespace(self):
+        """Test sanitizing InChI Key with whitespace."""
+        key = "  LFQSCWFLJHTTHZ-UHFFFAOYSA-N  "
+        assert sanitize_inchi_key(key) == "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
+
+    def test_sanitize_inchi_key_invalid_format(self):
+        """Test sanitizing invalid InChI Key formats."""
+        assert sanitize_inchi_key("INVALID-KEY") is None
+        assert sanitize_inchi_key("LFQSCWFLJHTTHZ-UHFFFAOYSA") is None  # Too short
+        assert sanitize_inchi_key("") is None
+        assert sanitize_inchi_key(None) is None
+
+    # Column Name Sanitization
+    def test_sanitize_column_name_valid(self):
+        """Test sanitizing valid column names."""
+        assert sanitize_column_name("SMILES") == "SMILES"
+        assert sanitize_column_name("Molecular Weight") == "Molecular_Weight"
+
+    def test_sanitize_column_name_special_chars(self):
+        """Test sanitizing column names with special characters."""
+        assert sanitize_column_name("Col<>Name") == "ColName"
+        assert sanitize_column_name("Test@Column!") == "TestColumn"
+
+    def test_sanitize_column_name_empty(self):
+        """Test sanitizing empty column names."""
+        assert sanitize_column_name("") == "unnamed"
+        assert sanitize_column_name(None) == "unnamed"
+
+    # Filename Sanitization
+    def test_sanitize_filename_valid(self):
+        """Test sanitizing valid filenames."""
+        assert sanitize_filename("data.csv") == "data.csv"
+        assert sanitize_filename("results_2024.xlsx") == "results_2024.xlsx"
+
+    def test_sanitize_filename_path_traversal(self):
+        """Test that path traversal is prevented."""
+        # sanitize_filename extracts just the filename, stripping all path components
+        result = sanitize_filename("../../../etc/passwd")
+        assert ".." not in result
+        assert "/" not in result
+        # Should get just the filename portion
+        assert result == "passwd"
+
+        result2 = sanitize_filename("..\\windows\\system32")
+        assert ".." not in result2
+        assert result2 == "system32"
+
+    def test_sanitize_filename_special_chars(self):
+        """Test sanitizing filenames with special characters."""
+        result = sanitize_filename("file<>:name.csv")
+        assert "<" not in result
+        assert ">" not in result
+        assert ":" not in result
+
+    def test_sanitize_filename_hidden(self):
+        """Test that hidden files are not allowed."""
+        assert sanitize_filename(".hidden") == "hidden"
+
+    # HTML Sanitization
+    def test_sanitize_html_valid(self):
+        """Test sanitizing HTML content."""
+        assert sanitize_html("Hello World") == "Hello World"
+        assert sanitize_html("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+    def test_sanitize_html_special_chars(self):
+        """Test HTML special characters are escaped."""
+        assert "&" in sanitize_html("A & B")
+        assert "&lt;" in sanitize_html("a < b")
+        assert "&gt;" in sanitize_html("a > b")
+        assert "&quot;" in sanitize_html('say "hi"')
+
+    def test_sanitize_html_empty(self):
+        """Test sanitizing empty HTML."""
+        assert sanitize_html("") == ""
+        assert sanitize_html(None) == ""
+
+
+# ============================================================================
+# Logging Setup Tests
+# ============================================================================
+
+class TestLoggingSetup:
+    """Tests for logging configuration."""
+
+    def test_setup_logging_import(self):
+        """Test that setup_logging can be imported."""
+        from molecular_calculator.config import setup_logging
+        assert callable(setup_logging)
+
+    def test_setup_logging_from_monitoring(self):
+        """Test that monitoring.setup_logging works."""
+        from molecular_calculator.utils.monitoring import setup_logging
+        assert callable(setup_logging)
+
+    def test_setup_logging_is_idempotent(self):
+        """Test that setup_logging can be called multiple times."""
+        from molecular_calculator.utils.monitoring import setup_logging
+        import logging
+
+        # Should not raise
+        setup_logging(level=logging.INFO)
+        setup_logging(level=logging.DEBUG)
+
+        # Should still work
+        logger = logging.getLogger(__name__)
+        logger.info("Test message")
