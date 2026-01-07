@@ -273,9 +273,16 @@ def create_fitted_plane_mesh(
 
     Returns:
         Plotly Mesh3d trace
+
+    Raises:
+        ValueError: If x or y arrays are empty
     """
     x = np.asarray(x).ravel()
     y = np.asarray(y).ravel()
+
+    # Validate arrays are not empty
+    if len(x) == 0 or len(y) == 0:
+        raise ValueError("Cannot create plane mesh from empty arrays")
 
     x_min, x_max = float(np.min(x)), float(np.max(x))
     y_min, y_max = float(np.min(y)), float(np.max(y))

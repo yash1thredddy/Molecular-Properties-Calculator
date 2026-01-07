@@ -68,6 +68,9 @@ def _render_export_buttons(
 ) -> None:
     """Render export buttons for a Plotly chart.
 
+    Uses session state to cache generated exports, avoiding repeated
+    kaleido/choreo calls on every page rerun.
+
     Args:
         fig: Plotly figure to export
         chart_type: Type of chart for filename
@@ -77,30 +80,63 @@ def _render_export_buttons(
         return
 
     with st.expander("Export Chart", expanded=False):
-        export_cols = st.columns(4)
         base_filename = chart_type.lower().replace(' ', '_').replace('/', '_')
         formats = ['png', 'svg', 'pdf', 'html']
 
-        for i, fmt in enumerate(formats):
-            with export_cols[i]:
-                try:
-                    data, mime, ext = get_download_data(fig, fmt)
-                    st.download_button(
-                        label=f"{fmt.upper()}",
-                        data=data,
-                        file_name=f"{base_filename}{ext}",
-                        mime=mime,
-                        key=f"{key_prefix}_export_{fmt}",
-                        width='stretch',
-                    )
-                except Exception as e:
-                    st.button(
-                        f"{fmt.upper()}",
-                        disabled=True,
-                        key=f"{key_prefix}_export_{fmt}_disabled",
-                        help=f"Export failed: {str(e)}",
-                        width='stretch',
-                    )
+        # Cache key for this specific chart's exports
+        cache_key = f"{key_prefix}_export_cache"
+
+        # Check if exports are already generated and cached
+        if cache_key not in st.session_state:
+            st.session_state[cache_key] = {}
+
+        cached_exports = st.session_state[cache_key]
+
+        # Generate exports button - only generate when user requests
+        if st.button("🔄 Generate Export Files", key=f"{key_prefix}_generate_exports",
+                     help="Click to generate downloadable files (only needed once per chart)"):
+            with st.spinner("Generating export files..."):
+                for fmt in formats:
+                    try:
+                        data, mime, ext = get_download_data(fig, fmt)
+                        cached_exports[fmt] = {
+                            'data': data,
+                            'mime': mime,
+                            'ext': ext,
+                            'success': True
+                        }
+                    except Exception as e:
+                        cached_exports[fmt] = {
+                            'success': False,
+                            'error': str(e)
+                        }
+                st.session_state[cache_key] = cached_exports
+                st.rerun()
+
+        # Show download buttons if exports are cached
+        if cached_exports:
+            export_cols = st.columns(4)
+            for i, fmt in enumerate(formats):
+                with export_cols[i]:
+                    if fmt in cached_exports:
+                        export_data = cached_exports[fmt]
+                        if export_data.get('success'):
+                            st.download_button(
+                                label=f"📥 {fmt.upper()}",
+                                data=export_data['data'],
+                                file_name=f"{base_filename}{export_data['ext']}",
+                                mime=export_data['mime'],
+                                key=f"{key_prefix}_export_{fmt}",
+                            )
+                        else:
+                            st.button(
+                                f"{fmt.upper()}",
+                                disabled=True,
+                                key=f"{key_prefix}_export_{fmt}_disabled",
+                                help=f"Export failed: {export_data.get('error', 'Unknown error')}",
+                            )
+        else:
+            st.info("Click 'Generate Export Files' to create downloadable versions.")
 
 
 def render_distribution_plots(
@@ -181,9 +217,7 @@ def render_distribution_plots(
 
             fig.update_layout(
                 height=400,
-                showlegend=False,
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
+                showlegend=False
             )
             st.plotly_chart(fig, width='stretch', key=f"{key_prefix}_{prop}")
 
@@ -524,11 +558,7 @@ def render_interactive_visualization(
         if fig:
             # Apply centralized theme
             fig = apply_theme(fig)
-            fig.update_layout(
-                height=500,
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
-            )
+            fig.update_layout(height=650)  # Increased height for better visibility
             st.plotly_chart(fig, width='stretch', key=f"{key_prefix}_main_chart")
 
             # Export buttons

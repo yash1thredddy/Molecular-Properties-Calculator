@@ -61,13 +61,31 @@ class SessionState:
         'last_error': lambda: None,
     }
 
+    @classmethod
+    def get_default(cls, key: str) -> Any:
+        """Get a fresh default value for a key.
+
+        Use this instead of accessing DEFAULTS directly to avoid
+        mutable default value issues.
+
+        Args:
+            key: The session state key
+
+        Returns:
+            A fresh copy of the default value
+        """
+        if key in cls._DEFAULT_FACTORIES:
+            return cls._DEFAULT_FACTORIES[key]()
+        return None
+
     # Legacy DEFAULTS for backwards compatibility (read-only reference)
-    # Note: These are the default VALUES, not to be assigned directly
+    # WARNING: Do not use mutable values from this dict directly.
+    # Use get_default() or _DEFAULT_FACTORIES instead.
     DEFAULTS: Dict[str, Any] = {
         'batch_results_df': None,
         'current_smiles_col': None,
         'uploaded_file_hash': None,
-        'selected_properties': [],
+        'selected_properties': [],  # WARNING: Mutable - use get_default() instead
         'mode': 'single',
         'chart_type': 'Scatter Plot',
         'show_structure': True,

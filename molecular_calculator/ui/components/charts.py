@@ -63,12 +63,15 @@ def create_scatter_plot(
         color_scale: Color scale for continuous color
         marker_size: Base marker size (used when size_col is None)
         size_max: Maximum marker size (used when size_col is set)
-        opacity: Marker opacity
-        key_prefix: Key prefix for widget uniqueness
+        opacity: Marker opacity (0.0 to 1.0)
+        key_prefix: Key prefix for widget uniqueness (reserved for future use)
 
     Returns:
         Tuple of (Plotly Figure, regression_stats dict or None)
     """
+    # Note: key_prefix is reserved for future widget key generation
+    _ = key_prefix
+
     # Prepare data - drop NaN for size column if specified
     if size_col:
         plot_df = df.dropna(subset=[size_col]).copy()
@@ -79,7 +82,8 @@ def create_scatter_plot(
     scatter_params = {
         'x': x_col,
         'y': y_col,
-        'title': title or f"{y_col.replace('_', ' ')} vs {x_col.replace('_', ' ')}"
+        'title': title or f"{y_col.replace('_', ' ')} vs {x_col.replace('_', ' ')}",
+        'opacity': opacity,
     }
 
     if color_col:

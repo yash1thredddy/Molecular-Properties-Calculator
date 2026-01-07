@@ -61,7 +61,6 @@ venv.bak/
 *~
 
 # Claude Code specific
-.claude/
 
 # Jupyter Notebook
 .ipynb_checkpoints

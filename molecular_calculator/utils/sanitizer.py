@@ -70,14 +70,19 @@ def sanitize_smiles(smiles: str) -> Optional[str]:
         logger.warning(f"SMILES too long: {len(smiles)} chars")
         return None
 
-    # Remove any non-printable characters
-    smiles = ''.join(c for c in smiles if c.isprintable())
+    # Remove any non-printable characters (whitespace is okay)
+    cleaned = ''.join(c for c in smiles if c.isprintable())
+    if cleaned != smiles:
+        logger.debug(f"Non-printable characters removed from SMILES")
+    smiles = cleaned
 
-    # Validate characters
+    # Validate characters - reject SMILES with invalid characters rather than silently modifying
     invalid_chars = set(smiles) - VALID_SMILES_CHARS
     if invalid_chars:
-        logger.warning(f"Invalid SMILES characters removed: {invalid_chars}")
-        smiles = ''.join(c for c in smiles if c in VALID_SMILES_CHARS)
+        logger.warning(f"Invalid SMILES characters detected: {invalid_chars}")
+        # Return None to indicate invalid input rather than silently modifying
+        # This prevents corrupted SMILES from being processed
+        return None
 
     return smiles if smiles else None
 

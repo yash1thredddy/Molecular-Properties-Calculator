@@ -21,6 +21,7 @@ Usage:
 """
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, List, Set, Callable
 
@@ -79,6 +80,10 @@ class MolecularCalculator:
         self._conversion_service = conversion_service
         self._property_calculator = property_calculator
         self._suppress_warnings = suppress_warnings
+
+        # Apply suppress_warnings setting
+        if suppress_warnings:
+            self.suppress_rdkit_warnings(True)
 
     @property
     def conversion_service(self) -> ConversionService:
@@ -432,21 +437,28 @@ class MolecularCalculator:
             )
             return idx, properties
 
-        # Prepare work items
-        work_items = [(i, row[smiles_col]) for i, row in df.iterrows()]
+        # Prepare work items with position index for O(1) lookup
+        work_items = []
+        for pos, (idx, row) in enumerate(df.iterrows()):
+            work_items.append((pos, idx, row[smiles_col]))
+
         total = len(work_items)
         results = [None] * total  # Pre-allocate for ordered results
 
         # Process in parallel
         completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(process_single, item): item[0] for item in work_items}
+            # Map future to position index for O(1) lookup
+            futures = {
+                executor.submit(process_single, (item[1], item[2])): item[0]
+                for item in work_items
+            }
 
             for future in as_completed(futures):
                 idx, props = future.result()
-                # Find position in original order
-                original_idx = list(df.index).index(idx) if idx in df.index else futures[future]
-                results[original_idx] = props
+                # Get position directly from futures mapping - O(1) lookup
+                position = futures[future]
+                results[position] = props
                 completed += 1
 
                 if progress_callback:
@@ -466,6 +478,7 @@ class MolecularCalculator:
 # =============================================================================
 
 _default_calculator: Optional[MolecularCalculator] = None
+_calculator_lock = threading.Lock()
 
 
 def get_calculator() -> MolecularCalculator:
@@ -473,6 +486,8 @@ def get_calculator() -> MolecularCalculator:
 
     This is the recommended way to use the calculator for most use cases.
     The instance is lazily created on first call and reused thereafter.
+
+    Thread-safe using double-checked locking pattern.
 
     Returns:
         MolecularCalculator: The default calculator instance
@@ -484,5 +499,8 @@ def get_calculator() -> MolecularCalculator:
     """
     global _default_calculator
     if _default_calculator is None:
-        _default_calculator = MolecularCalculator()
+        with _calculator_lock:
+            # Double-check after acquiring lock
+            if _default_calculator is None:
+                _default_calculator = MolecularCalculator()
     return _default_calculator

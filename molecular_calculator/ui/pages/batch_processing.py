@@ -310,7 +310,7 @@ def _process_batch(
         if selected_properties:
             status_text.text("Calculating molecular properties...")
 
-            if use_parallel and total > 10:
+            if use_parallel and total > 50:
                 # Use parallel processing for larger datasets
                 def progress_callback(completed, total_count):
                     progress = completed / total_count

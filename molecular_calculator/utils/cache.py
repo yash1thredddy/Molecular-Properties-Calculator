@@ -77,7 +77,7 @@ class TTLCache:
 
     def _evict_oldest(self) -> None:
         """Evict the oldest entry if cache is full."""
-        # Use > instead of >= to avoid off-by-one: evict when we need room
+        # Use >= to evict when cache is at capacity (before adding new item)
         while len(self._cache) >= self.maxsize:
             oldest_key = next(iter(self._cache))
             self._cache.pop(oldest_key)

@@ -217,9 +217,9 @@ class TestMolecularCalculator(unittest.TestCase):
                             f"Property {prop} is not numeric for {name}"
                         )
 
-                # Test rule compliance calculations
-                self.assertIn(properties['Lipinski_Violations'], [0, 1])
-                self.assertIn(properties['Veber_Violations'], [0, 1])
+                # Test rule compliance calculations (Lipinski can have 0-4 violations, Veber 0-2)
+                self.assertIn(properties['Lipinski_Violations'], [0, 1, 2, 3, 4])
+                self.assertIn(properties['Veber_Violations'], [0, 1, 2])
 
     def test_calculate_molecular_properties_optional_descriptors(self):
         """Test optional molecular descriptors that might fail"""
@@ -351,17 +351,18 @@ class TestMolecularCalculator(unittest.TestCase):
         large_molecule = 'C' * 50  # Very long alkyl chain - should fail MW rule
         properties_fail = MolecularCalculator.calculate_molecular_properties(large_molecule)
         if properties_fail:  # If SMILES is valid
-            self.assertIn(properties_fail['Lipinski_Violations'], [0, 1])
+            # Lipinski can have 0-4 violations
+            self.assertIn(properties_fail['Lipinski_Violations'], [0, 1, 2, 3, 4])
 
     def test_veber_rule_compliance(self):
         """Test Veber Rule compliance calculation"""
         properties = MolecularCalculator.calculate_molecular_properties('CCO')
         self.assertEqual(properties['Veber_Violations'], 0)
 
-        # Test should return 0 or 1
+        # Veber can have 0-2 violations (TPSA and RotBonds)
         for name, data in self.test_molecules.items():
             props = MolecularCalculator.calculate_molecular_properties(data['smiles'])
-            self.assertIn(props['Veber_Violations'], [0, 1], f"Invalid Veber violation for {name}")
+            self.assertIn(props['Veber_Violations'], [0, 1, 2], f"Invalid Veber violation for {name}")
 
     def test_stereochemistry_handling(self):
         """Test handling of stereochemical information"""
@@ -847,12 +848,17 @@ class TestMolecularProperties(unittest.TestCase):
 class TestAdditionalSanitization(unittest.TestCase):
     """Additional sanitization tests for complete coverage"""
 
-    def test_sanitize_smiles_removes_invalid_chars(self):
-        """Test that invalid characters are removed."""
+    def test_sanitize_smiles_rejects_invalid_chars(self):
+        """Test that SMILES with invalid characters are rejected (returns None)."""
         from molecular_calculator.utils.sanitizer import sanitize_smiles
+        # Invalid characters should cause rejection to prevent silent corruption
         result = sanitize_smiles("CCO!")
+        self.assertIsNone(result)
+
+        # Valid SMILES should pass through
+        result = sanitize_smiles("CCO")
         self.assertIsNotNone(result)
-        self.assertNotIn("!", result)
+        self.assertEqual(result, "CCO")
 
     def test_sanitize_inchi_with_whitespace(self):
         """Test sanitizing InChI with whitespace."""
@@ -1786,12 +1792,12 @@ def run_comprehensive_tests():
     if result.failures:
         print(f"\nFAILURES ({len(result.failures)}):")
         for test, traceback in result.failures:
-            print(f"- {test}: {traceback.split('AssertionError: ')[-1].split('\\n')[0] if 'AssertionError: ' in traceback else 'See details above'}")
+            print(f"- {test}: {traceback.split('AssertionError: ')[-1].split(chr(10))[0] if 'AssertionError: ' in traceback else 'See details above'}")
 
     if result.errors:
         print(f"\nERRORS ({len(result.errors)}):")
         for test, traceback in result.errors:
-            print(f"- {test}: {traceback.split('\\n')[-2] if len(traceback.split('\\n')) > 1 else 'Unknown error'}")
+            print(f"- {test}: {traceback.split(chr(10))[-2] if len(traceback.split(chr(10))) > 1 else 'Unknown error'}")
 
     return result.wasSuccessful()
 
@@ -1801,6 +1807,6 @@ if __name__ == '__main__':
     success = run_comprehensive_tests()
 
     if success:
-        print("\\n🎉 ALL TESTS PASSED! System is fully functional.")
+        print("\n🎉 ALL TESTS PASSED! System is fully functional.")
     else:
-        print("\\n❌ Some tests failed. Please review the output above.")
+        print("\n❌ Some tests failed. Please review the output above.")

@@ -39,7 +39,9 @@ class PerformanceMetrics:
     """
 
     def __init__(self):
+        # Timing data uses bounded deque (last 1000 measurements for memory efficiency)
         self._metrics: Dict[str, Deque[float]] = {}
+        # Counters track lifetime totals (unbounded but only integer per operation)
         self._counts: Dict[str, int] = {}
         self._errors: Dict[str, int] = {}
         self._lock = Lock()

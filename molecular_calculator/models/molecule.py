@@ -49,6 +49,9 @@ class MoleculeInput:
         """Validate and normalize the input."""
         if self.value:
             self.value = self.value.strip()
+            # Validate that stripped value is not empty
+            if not self.value:
+                raise ValueError("Input value cannot be empty or whitespace-only")
 
 
 @dataclass

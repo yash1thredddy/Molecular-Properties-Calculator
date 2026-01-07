@@ -123,18 +123,25 @@ def render_calculation_result(
 def render_dataframe_preview(
     df: pd.DataFrame,
     max_rows: int = 0,
-    title: str = "Data Preview"
+    title: str = "Data Preview",
+    height: int = 400
 ) -> None:
     """Render a preview of a DataFrame.
 
     Args:
         df: DataFrame to preview
-        max_rows: Maximum rows to show (0 = show all)
+        max_rows: Maximum rows to show (0 = show all rows)
         title: Title for the preview
+        height: Height of the dataframe widget in pixels
     """
     st.subheader(title)
-    st.write(f"Showing all {len(df):,} rows")
-    st.dataframe(df, width='stretch', height=400)
+
+    if max_rows > 0 and len(df) > max_rows:
+        st.write(f"Showing first {max_rows:,} of {len(df):,} rows")
+        st.dataframe(df.head(max_rows), width='stretch', height=height)
+    else:
+        st.write(f"Showing all {len(df):,} rows")
+        st.dataframe(df, width='stretch', height=height)
 
 
 def render_batch_results(
