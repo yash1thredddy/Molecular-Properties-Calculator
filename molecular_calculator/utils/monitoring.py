@@ -11,7 +11,7 @@ import logging
 import platform
 import sys
 from threading import Lock
-from typing import Dict, Any, Optional, Deque
+from typing import Dict, Any, Optional, Deque, Union
 from datetime import datetime
 from functools import wraps
 from collections import deque
@@ -289,7 +289,7 @@ _logging_lock = Lock()
 
 
 def setup_logging(
-    level: int = logging.INFO,
+    level: Union[int, str] = logging.INFO,
     format_string: Optional[str] = None,
 ) -> None:
     """

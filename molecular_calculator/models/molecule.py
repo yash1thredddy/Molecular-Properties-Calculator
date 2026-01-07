@@ -47,11 +47,10 @@ class MoleculeInput:
 
     def __post_init__(self):
         """Validate and normalize the input."""
-        if self.value:
-            self.value = self.value.strip()
-            # Validate that stripped value is not empty
-            if not self.value:
-                raise ValueError("Input value cannot be empty or whitespace-only")
+        # Always validate - empty strings should also be rejected
+        self.value = self.value.strip()
+        if not self.value:
+            raise ValueError("Input value cannot be empty or whitespace-only")
 
 
 @dataclass

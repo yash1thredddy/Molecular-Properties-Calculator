@@ -12,6 +12,7 @@ This module handles:
 Chart creation logic is delegated to charts.py to avoid duplication.
 """
 
+import hashlib
 import logging
 import streamlit as st
 import streamlit.components.v1 as components
@@ -83,8 +84,19 @@ def _render_export_buttons(
         base_filename = chart_type.lower().replace(' ', '_').replace('/', '_')
         formats = ['png', 'svg', 'pdf', 'html']
 
-        # Cache key for this specific chart's exports
+        # Create figure fingerprint to detect when chart changes
+        fig_json = fig.to_json()
+        fig_hash = hashlib.md5(fig_json.encode()).hexdigest()[:8]
+
+        # Cache key includes figure hash to invalidate when chart changes
         cache_key = f"{key_prefix}_export_cache"
+        hash_key = f"{key_prefix}_export_hash"
+
+        # Check if figure changed - invalidate cache if so
+        if hash_key in st.session_state and st.session_state[hash_key] != fig_hash:
+            st.session_state[cache_key] = {}
+
+        st.session_state[hash_key] = fig_hash
 
         # Check if exports are already generated and cached
         if cache_key not in st.session_state:
@@ -621,8 +633,6 @@ def _render_3d_ols_regression(
     equation = ols_model.get_equation_string(decimals=3)
 
     # Create 3D scatter plot
-    import plotly.graph_objects as go
-
     fig = go.Figure()
 
     # Prepare customdata for structure viewer

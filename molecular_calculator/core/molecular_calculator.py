@@ -455,10 +455,17 @@ class MolecularCalculator:
             }
 
             for future in as_completed(futures):
-                idx, props = future.result()
                 # Get position directly from futures mapping - O(1) lookup
                 position = futures[future]
-                results[position] = props
+
+                try:
+                    idx, props = future.result()
+                    results[position] = props
+                except Exception as e:
+                    # Log error and continue processing other molecules
+                    logger.warning(f"Error processing molecule at position {position}: {e}")
+                    results[position] = {'_error': str(e)}
+
                 completed += 1
 
                 if progress_callback:

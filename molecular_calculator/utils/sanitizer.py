@@ -73,7 +73,7 @@ def sanitize_smiles(smiles: str) -> Optional[str]:
     # Remove any non-printable characters (whitespace is okay)
     cleaned = ''.join(c for c in smiles if c.isprintable())
     if cleaned != smiles:
-        logger.debug(f"Non-printable characters removed from SMILES")
+        logger.debug("Non-printable characters removed from SMILES")
     smiles = cleaned
 
     # Validate characters - reject SMILES with invalid characters rather than silently modifying

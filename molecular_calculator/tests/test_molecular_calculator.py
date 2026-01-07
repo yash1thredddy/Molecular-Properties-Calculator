@@ -601,12 +601,12 @@ class TestSanitization:
         assert sanitize_smiles("c1ccccc1") == "c1ccccc1"
         assert sanitize_smiles("  CCO  ") == "CCO"
 
-    def test_sanitize_smiles_removes_invalid_chars(self):
-        """Test that invalid characters are removed."""
-        # These contain invalid characters that should be stripped
+    def test_sanitize_smiles_rejects_invalid_chars(self):
+        """Test that SMILES with invalid characters are rejected."""
+        # SMILES with invalid characters should be rejected (return None)
+        # to prevent corrupted data from being processed
         result = sanitize_smiles("CCO!")
-        assert result is not None
-        assert "!" not in result
+        assert result is None  # Invalid char '!' causes rejection
 
     def test_sanitize_smiles_empty(self):
         """Test sanitizing empty SMILES."""

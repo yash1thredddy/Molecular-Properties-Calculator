@@ -629,10 +629,7 @@ def _add_regression_annotation(
     fig.add_annotation(
         x=0.02, y=0.98,
         xref="paper", yref="paper",
-        text=f"<b>Regression Statistics:</b><br>" +
-             f"Equation: {equation}<br>" +
-             f"R² = {r2:.3f}<br>" +
-             f"Correlation: {corr_text}",
+        text=f"<b>Regression Statistics:</b><br>Equation: {equation}<br>R² = {r2:.3f}<br>Correlation: {corr_text}",
         showarrow=False,
         bgcolor="rgba(255,255,255,0.9)",
         bordercolor="black",
