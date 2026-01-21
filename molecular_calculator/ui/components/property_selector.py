@@ -241,6 +241,7 @@ def get_property_description(property_name: str) -> str:
         'HB_Acceptors': 'Hydrogen bond acceptors (≤10 for drug-likeness)',
         'TPSA': 'Topological polar surface area in Ų (≤140 for oral bioavailability)',
         '10xPSA_MW': 'PSA/MW ratio scaled by 10 (membrane permeability indicator)',
+        'NPOLoNHA': 'Polar atoms / Heavy atoms ratio (polarity indicator)',
         'Rotatable_Bonds': 'Number of rotatable bonds (≤10 for oral bioavailability)',
         'QED': 'Quantitative Estimate of Drug-likeness (0-1 scale)',
         'Aromatic_Rings': 'Number of aromatic rings',
@@ -265,6 +266,12 @@ def get_property_description(property_name: str) -> str:
         'mBEI': 'Molecular Binding Efficiency (-log10(Ki / MW))',
         'LEH': 'Ligand Efficiency Hopkins (-ΔG / Heavy Atoms)',
         'LEP': 'Ligand Efficiency Polar (-ΔG / Polar Atoms)',
+        # Assay Interference Flags
+        'PAINS': 'Pan-Assay Interference Substructures (0=Clean, 1=Flagged)',
+        'Aggregator': 'Colloidal aggregation risk (0=Clean, 1=Flagged)',
+        'Redox': 'Redox-active functional groups (0=Clean, 1=Flagged)',
+        'Fluorescence': 'Autofluorescent scaffolds (0=Clean, 1=Flagged)',
+        'Thiol': 'Thiol-reactive electrophiles (0=Clean, 1=Flagged)',
     }
 
     return descriptions.get(property_name, property_name)

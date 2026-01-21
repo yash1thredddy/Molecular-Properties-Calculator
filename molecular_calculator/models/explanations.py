@@ -40,6 +40,7 @@ class PropertyExplanations:
         - **HB_Acceptors**: Hydrogen bond acceptors (≤10 for drug-likeness)
         - **TPSA**: Topological polar surface area in Ų (≤140 for oral bioavailability)
         - **10xPSA_MW**: PSA/MW ratio scaled by 10 (lower values indicate better membrane permeability)
+        - **NPOLoNHA**: Polar atoms / Heavy atoms ratio (NPOL/NHA, indicates molecular polarity fraction)
         - **Rotatable_Bonds**: Number of rotatable bonds (≤10 for oral bioavailability)
 
         #### Drug-likeness
@@ -107,6 +108,22 @@ class PropertyExplanations:
         - System automatically detects available columns
         - Only calculates missing values from SMILES when needed
 
+        ### Assay Interference Flags
+        Detection of compounds with known assay interference mechanisms.
+        Based on Bisson et al. (2016) and Baell & Holloway (2010).
+
+        #### Interference Mechanisms Detected:
+        - **PAINS**: Pan-Assay Interference Substructures - compounds that show promiscuous activity
+        - **Aggregator**: Colloidal aggregation risk - compounds that form aggregates causing false positives
+        - **Redox**: Redox-active groups (catechols, quinones, thiols) that interfere with redox-based assays
+        - **Fluorescence**: Autofluorescent scaffolds that interfere with fluorescence-based assays
+        - **Thiol**: Thiol-reactive electrophiles (Michael acceptors, maleimides) that covalently modify proteins
+
+        #### Interpretation:
+        - Flags indicate potential assay interference, not necessarily invalid activity
+        - Compounds with structural evidence (e.g., PDB structures) may have genuine activity despite flags
+        - Use as orthogonal information alongside other drug-likeness metrics
+
         ### Development Information
         Developed by: **Yashwanth Reddy** for **ITR-UIC**
         Part of: **Chemo-Informatics Toolkit**
@@ -133,6 +150,7 @@ class PropertyExplanations:
                 "HB_Donors",
                 "HB_Acceptors",
                 "TPSA",
+                "NPOLoNHA",
                 "Rotatable_Bonds"
             ],
             "Drug-likeness": [

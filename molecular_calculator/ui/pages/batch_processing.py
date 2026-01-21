@@ -19,6 +19,8 @@ from molecular_calculator.ui.components import (
     render_property_explanations,
     render_distribution_plots,
     render_interactive_visualization,
+    render_interference_section,
+    calculate_batch_interference_flags,
 )
 from molecular_calculator.utils.session_state import SessionState
 
@@ -415,6 +417,35 @@ def _display_batch_results(
     # Show compliance summary
     if 'Lipinski_Violations' in df.columns or 'Veber_Violations' in df.columns:
         render_rule_compliance_summary(df)
+
+    # Show Assay Interference Flags section
+    st.markdown("---")
+    flag_columns = ['PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol']
+    if any(col in df.columns for col in flag_columns):
+        # Flags already calculated
+        render_interference_section(
+            flags_df=df[flag_columns] if all(col in df.columns for col in flag_columns) else df,
+            total_compounds=len(df),
+            df=df,
+            id_column=name_col if name_col else (smiles_col if smiles_col else df.columns[0]),
+            name_column=name_col,
+            show_details=True
+        )
+    elif smiles_col and smiles_col in df.columns:
+        # Calculate flags on the fly for display
+        with st.spinner("Calculating assay interference flags..."):
+            df_with_flags = calculate_batch_interference_flags(df, smiles_col)
+            # Update session state with flags
+            SessionState.set('batch_results_df', df_with_flags)
+            render_interference_section(
+                flags_df=df_with_flags,
+                total_compounds=len(df_with_flags),
+                df=df_with_flags,
+                id_column=name_col if name_col else smiles_col,
+                name_column=name_col,
+                show_details=True
+            )
+            df = df_with_flags  # Use updated df for the rest of display
 
     # Show FULL results table FIRST (most important for users)
     st.subheader("📋 Results Table")

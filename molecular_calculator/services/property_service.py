@@ -95,13 +95,15 @@ class PropertyCalculator:
     def _calculate_lipinski_properties(
         self,
         mol: Chem.Mol,
-        molecular_weight: float
+        molecular_weight: float,
+        heavy_atom_count: int
     ) -> Dict[str, Any]:
         """Calculate Lipinski rule-related properties.
 
         Args:
             mol: RDKit Mol object
             molecular_weight: Pre-calculated molecular weight
+            heavy_atom_count: Pre-calculated heavy atom count
 
         Returns:
             Dictionary of Lipinski properties
@@ -113,12 +115,20 @@ class PropertyCalculator:
         if molecular_weight > 0:
             psa_mw_ratio = round((10 * tpsa) / molecular_weight, 3)
 
+        # Calculate NPOLoNHA (Polar Atoms / Heavy Atoms)
+        # NPOL = Number of heteroatoms (N, O, S, P, halogens, etc.)
+        npol = Descriptors.NumHeteroatoms(mol)
+        npol_nha = 0.0
+        if heavy_atom_count > 0:
+            npol_nha = round(npol / heavy_atom_count, 3)
+
         return {
             'logp': round(Descriptors.MolLogP(mol), 3),
             'hb_donors': Descriptors.NumHDonors(mol),
             'hb_acceptors': Descriptors.NumHAcceptors(mol),
             'tpsa': tpsa,
             'psa_mw_ratio': psa_mw_ratio,
+            'npol_nha': npol_nha,
             'rotatable_bonds': Descriptors.NumRotatableBonds(mol),
         }
 
@@ -290,7 +300,8 @@ class PropertyCalculator:
             basic = self._calculate_basic_properties(mol)
             lipinski = self._calculate_lipinski_properties(
                 mol,
-                basic['molecular_weight']
+                basic['molecular_weight'],
+                basic['heavy_atom_count']
             )
             ring = self._calculate_ring_properties(mol)
             complexity = self._calculate_complexity_properties(mol)
@@ -324,6 +335,7 @@ class PropertyCalculator:
                 hb_acceptors=lipinski['hb_acceptors'],
                 tpsa=lipinski['tpsa'],
                 psa_mw_ratio=lipinski['psa_mw_ratio'],
+                npol_nha=lipinski['npol_nha'],
                 rotatable_bonds=lipinski['rotatable_bonds'],
                 qed=qed_value,
                 aromatic_rings=ring['aromatic_rings'],

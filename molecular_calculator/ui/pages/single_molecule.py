@@ -16,6 +16,10 @@ from molecular_calculator.ui.components import (
     render_properties_by_group,
     render_property_explanations,
     create_download_button,
+    render_interference_section,
+)
+from molecular_calculator.services.assay_interference import (
+    get_interference_flags_from_smiles,
 )
 
 
@@ -181,13 +185,20 @@ def _calculate_and_display_properties(
     st.subheader("Calculated Properties")
     render_properties_by_group(filtered_props)
 
+    # Calculate and display interference flags
+    st.markdown("---")
+    interference_flags = get_interference_flags_from_smiles(smiles)
+    render_interference_section(flags=interference_flags, show_details=True)
+
     # Download options
+    st.markdown("---")
     st.subheader("Export Results")
 
     import pandas as pd
     results_df = pd.DataFrame([{
         'SMILES': smiles,
-        **filtered_props
+        **filtered_props,
+        **interference_flags.to_dict()
     }])
 
     col1, col2 = st.columns(2)

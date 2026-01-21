@@ -69,6 +69,7 @@ class MolecularProperties:
         hb_acceptors: Hydrogen bond acceptors
         tpsa: Topological polar surface area
         psa_mw_ratio: 10×PSA/MW ratio
+        npol_nha: Polar atoms / Heavy atoms ratio
         rotatable_bonds: Number of rotatable bonds
         qed: Quantitative Estimate of Drug-likeness
         aromatic_rings: Number of aromatic rings
@@ -99,6 +100,7 @@ class MolecularProperties:
     hb_acceptors: Optional[int] = None
     tpsa: Optional[float] = None
     psa_mw_ratio: Optional[float] = None
+    npol_nha: Optional[float] = None
     rotatable_bonds: Optional[int] = None
 
     # Drug-likeness
@@ -143,6 +145,7 @@ class MolecularProperties:
             'hb_acceptors': 'HB_Acceptors',
             'tpsa': 'TPSA',
             'psa_mw_ratio': '10xPSA_MW',
+            'npol_nha': 'NPOLoNHA',
             'rotatable_bonds': 'Rotatable_Bonds',
             'qed': 'QED',
             'aromatic_rings': 'Aromatic_Rings',
@@ -189,6 +192,7 @@ class MolecularProperties:
             'HB_Acceptors': 'hb_acceptors',
             'TPSA': 'tpsa',
             '10xPSA_MW': 'psa_mw_ratio',
+            'NPOLoNHA': 'npol_nha',
             'Rotatable_Bonds': 'rotatable_bonds',
             'QED': 'qed',
             'Aromatic_Rings': 'aromatic_rings',
@@ -315,7 +319,7 @@ PROPERTY_GROUPS: Dict[str, List[str]] = {
     ],
     PropertyGroup.LIPINSKI.value: [
         'LogP', 'HB_Donors', 'HB_Acceptors', 'TPSA',
-        '10xPSA_MW', 'Rotatable_Bonds'
+        '10xPSA_MW', 'NPOLoNHA', 'Rotatable_Bonds'
     ],
     PropertyGroup.DRUGLIKENESS.value: ['QED'],
     PropertyGroup.RULES.value: ['Lipinski_Violations', 'Veber_Violations'],

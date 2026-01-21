@@ -86,6 +86,16 @@ from .plotly_3d_utils import (
     create_fitted_plane_mesh,
 )
 
+from .interference_display import (
+    render_interference_header,
+    render_interference_metrics,
+    render_batch_interference_metrics,
+    render_flag_summary_table,
+    render_flagged_compounds_table,
+    render_interference_section,
+    calculate_batch_interference_flags,
+)
+
 __all__ = [
     # File uploader
     "render_file_uploader",
@@ -152,4 +162,12 @@ __all__ = [
     "add_residual_vectors",
     "add_predicted_markers",
     "create_fitted_plane_mesh",
+    # Interference display
+    "render_interference_header",
+    "render_interference_metrics",
+    "render_batch_interference_metrics",
+    "render_flag_summary_table",
+    "render_flagged_compounds_table",
+    "render_interference_section",
+    "calculate_batch_interference_flags",
 ]
