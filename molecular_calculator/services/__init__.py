@@ -22,6 +22,13 @@ from .ligand_efficiency import (
     LigandEfficiencyCalculator,
     get_lei_descriptions,
 )
+from .assay_interference import (
+    InterferenceFlags,
+    calculate_interference_flags,
+    get_interference_flags_from_smiles,
+    get_interference_summary,
+    FLAG_DESCRIPTIONS,
+)
 
 __all__ = [
     # API Client
@@ -38,4 +45,10 @@ __all__ = [
     "DependencyChecker",
     "LigandEfficiencyCalculator",
     "get_lei_descriptions",
+    # Assay Interference
+    "InterferenceFlags",
+    "calculate_interference_flags",
+    "get_interference_flags_from_smiles",
+    "get_interference_summary",
+    "FLAG_DESCRIPTIONS",
 ]
