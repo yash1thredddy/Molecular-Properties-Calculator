@@ -20,9 +20,9 @@ from molecular_calculator.ui.components import (
     render_distribution_plots,
     render_interactive_visualization,
     render_interference_section,
-    calculate_batch_interference_flags,
 )
 from molecular_calculator.utils.session_state import SessionState
+from molecular_calculator.services.assay_interference import get_interference_flags_from_smiles
 
 # Import LEI functionality
 from molecular_calculator.services.ligand_efficiency import (
@@ -381,6 +381,42 @@ def _process_batch(
             else:
                 st.warning(f"⚠️ LEI calculation issue: {lei_status.get('message', 'Unknown error')}")
 
+        # Calculate interference flags if any are selected
+        interference_props = {'PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'}
+        selected_interference = selected_properties & interference_props
+
+        if selected_interference and smiles_col in final_df.columns:
+            status_text.text("Calculating assay interference flags...")
+            progress_bar.progress(0.95, text="Calculating assay interference flags...")
+
+            # Calculate flags for each molecule (use detailed dict for pattern info)
+            flag_results = []
+            empty_result = {
+                'PAINS': 0, 'PAINS_Details': '',
+                'Aggregator': 0, 'Aggregator_Details': '',
+                'Redox': 0, 'Redox_Details': '',
+                'Fluorescence': 0, 'Fluorescence_Details': '',
+                'Thiol': 0, 'Thiol_Details': ''
+            }
+            for smiles in final_df[smiles_col]:
+                if pd.isna(smiles):
+                    flag_results.append(empty_result.copy())
+                else:
+                    flags = get_interference_flags_from_smiles(str(smiles))
+                    flag_results.append(flags.to_detailed_dict())
+
+            # Add flag columns and detail columns to dataframe
+            flags_df = pd.DataFrame(flag_results)
+            for col in flags_df.columns:
+                # Add flag columns if selected
+                if col in selected_interference:
+                    final_df[col] = flags_df[col]
+                # Also add detail columns for selected flags
+                elif col.endswith('_Details'):
+                    base_flag = col.replace('_Details', '')
+                    if base_flag in selected_interference:
+                        final_df[col] = flags_df[col]
+
         progress_bar.empty()
         status_text.empty()
 
@@ -418,34 +454,29 @@ def _display_batch_results(
     if 'Lipinski_Violations' in df.columns or 'Veber_Violations' in df.columns:
         render_rule_compliance_summary(df)
 
-    # Show Assay Interference Flags section
-    st.markdown("---")
-    flag_columns = ['PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol']
-    if any(col in df.columns for col in flag_columns):
-        # Flags already calculated
-        render_interference_section(
-            flags_df=df[flag_columns] if all(col in df.columns for col in flag_columns) else df,
-            total_compounds=len(df),
-            df=df,
-            id_column=name_col if name_col else (smiles_col if smiles_col else df.columns[0]),
-            name_column=name_col,
-            show_details=True
-        )
-    elif smiles_col and smiles_col in df.columns:
-        # Calculate flags on the fly for display
-        with st.spinner("Calculating assay interference flags..."):
-            df_with_flags = calculate_batch_interference_flags(df, smiles_col)
-            # Update session state with flags
-            SessionState.set('batch_results_df', df_with_flags)
+    # Check if any interference properties were selected
+    interference_props = {'PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'}
+    selected_interference = calculated_columns & interference_props
+
+    # Show Assay Interference Flags section only if selected
+    # Note: Flags are already calculated during _process_batch(), no need to recalculate
+    if selected_interference:
+        st.markdown("---")
+        flag_columns = ['PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol']
+        available_flag_columns = [col for col in flag_columns if col in df.columns]
+
+        if available_flag_columns:
+            # Use pre-calculated flags from batch processing
             render_interference_section(
-                flags_df=df_with_flags,
-                total_compounds=len(df_with_flags),
-                df=df_with_flags,
-                id_column=name_col if name_col else smiles_col,
+                flags_df=df[available_flag_columns] if len(available_flag_columns) == len(flag_columns) else df,
+                total_compounds=len(df),
+                df=df,
+                id_column=name_col if name_col else (smiles_col if smiles_col else df.columns[0]),
                 name_column=name_col,
                 show_details=True
             )
-            df = df_with_flags  # Use updated df for the rest of display
+        else:
+            st.warning("Interference flags were selected but not found in results. Please re-run the calculation.")
 
     # Show FULL results table FIRST (most important for users)
     st.subheader("📋 Results Table")

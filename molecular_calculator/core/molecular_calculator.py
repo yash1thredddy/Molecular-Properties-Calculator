@@ -46,6 +46,57 @@ from molecular_calculator.utils.exceptions import InvalidSMILESError
 logger = logging.getLogger(__name__)
 
 
+def _process_single_molecule(
+    idx_and_smiles: tuple,
+    conversion_service: ConversionService,
+    property_calculator: PropertyCalculator,
+    selected_properties: Optional[Set[str]],
+    enable_online_lookup: bool
+) -> tuple:
+    """Process a single molecule - designed for parallel execution.
+
+    This helper function is extracted from process_batch_parallel to improve
+    code organization and testability.
+
+    Args:
+        idx_and_smiles: Tuple of (original_index, smiles_value)
+        conversion_service: Service for format detection and conversion
+        property_calculator: Service for property calculation
+        selected_properties: Optional set of properties to calculate
+        enable_online_lookup: Whether to enable online InChI Key lookup
+
+    Returns:
+        Tuple of (original_index, properties_dict or error_dict)
+    """
+    idx, smiles_value = idx_and_smiles
+
+    if pd.isna(smiles_value):
+        return idx, {'_error': 'Empty or NaN value'}
+
+    smiles_str = str(smiles_value)
+
+    # Auto-detect and convert if needed
+    input_format = conversion_service.detect_format(smiles_str)
+
+    if input_format != InputFormat.SMILES:
+        conversion_result = conversion_service.to_smiles(
+            smiles_str,
+            input_format=input_format,
+            enable_online_lookup=enable_online_lookup
+        )
+        if conversion_result.success:
+            smiles_str = conversion_result.smiles
+        else:
+            return idx, {'_error': conversion_result.error or 'Conversion failed'}
+
+    # Calculate properties
+    properties = property_calculator.calculate_as_dict(
+        smiles_str,
+        selected_properties
+    )
+    return idx, properties
+
+
 class MolecularCalculator:
     """Main class for molecular property calculations.
 
@@ -325,7 +376,19 @@ class MolecularCalculator:
 
         Returns:
             DataFrame with calculated properties
+
+        Raises:
+            ValueError: If DataFrame is empty or column not found
         """
+        # Validate DataFrame is not empty
+        if df is None or df.empty:
+            logger.warning("Empty DataFrame provided to process_batch")
+            return df if df is not None else pd.DataFrame()
+
+        # Validate column exists
+        if smiles_col not in df.columns:
+            raise ValueError(f"Column '{smiles_col}' not found in DataFrame")
+
         calculator = cls()
         results = []
 
@@ -397,8 +460,20 @@ class MolecularCalculator:
 
         Returns:
             DataFrame with calculated properties
+
+        Raises:
+            ValueError: If DataFrame is empty or column not found
         """
         import os
+
+        # Validate DataFrame is not empty
+        if df is None or df.empty:
+            logger.warning("Empty DataFrame provided to process_batch_parallel")
+            return df if df is not None else pd.DataFrame()
+
+        # Validate column exists
+        if smiles_col not in df.columns:
+            raise ValueError(f"Column '{smiles_col}' not found in DataFrame")
 
         if max_workers is None:
             max_workers = min(32, (os.cpu_count() or 1) + 4)
@@ -407,35 +482,16 @@ class MolecularCalculator:
         conversion_service = get_conversion_service()
         property_calculator = get_property_calculator()
 
-        def process_single(idx_and_smiles):
-            """Process a single molecule - designed for parallel execution."""
-            idx, smiles_value = idx_and_smiles
-
-            if pd.isna(smiles_value):
-                return idx, {'_error': 'Empty or NaN value'}
-
-            smiles_str = str(smiles_value)
-
-            # Auto-detect and convert if needed
-            input_format = conversion_service.detect_format(smiles_str)
-
-            if input_format != InputFormat.SMILES:
-                conversion_result = conversion_service.to_smiles(
-                    smiles_str,
-                    input_format=input_format,
-                    enable_online_lookup=enable_online_lookup
-                )
-                if conversion_result.success:
-                    smiles_str = conversion_result.smiles
-                else:
-                    return idx, {'_error': conversion_result.error or 'Conversion failed'}
-
-            # Calculate properties
-            properties = property_calculator.calculate_as_dict(
-                smiles_str,
-                selected_properties
+        # Create a wrapper that captures the closure variables for the extracted function
+        def process_single(idx_and_smiles: tuple) -> tuple:
+            """Wrapper for _process_single_molecule with captured context."""
+            return _process_single_molecule(
+                idx_and_smiles,
+                conversion_service,
+                property_calculator,
+                selected_properties,
+                enable_online_lookup
             )
-            return idx, properties
 
         # Prepare work items with position index for O(1) lookup
         work_items = []

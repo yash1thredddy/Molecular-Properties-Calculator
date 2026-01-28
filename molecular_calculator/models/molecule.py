@@ -27,6 +27,7 @@ class PropertyGroup(Enum):
     COMPLEXITY = "Complexity"
     ADDITIONAL = "Additional"
     LEI = "Ligand Efficiency Indices"
+    ASSAY_INTERFERENCE = "Assay Interference"
 
 
 @dataclass
@@ -329,6 +330,9 @@ PROPERTY_GROUPS: Dict[str, List[str]] = {
     ],
     PropertyGroup.COMPLEXITY.value: ['BertzCT', 'Chi0', 'Chi1'],
     PropertyGroup.ADDITIONAL.value: ['CrippenLogP', 'CrippenMR', 'LabuteASA'],
+    PropertyGroup.ASSAY_INTERFERENCE.value: [
+        'PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'
+    ],
 }
 
 LEI_PROPERTY_GROUP: Dict[str, List[str]] = {

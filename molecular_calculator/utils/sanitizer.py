@@ -15,6 +15,7 @@ Use sanitizer for cleaning user input before processing.
 Use validators for checking if data meets requirements.
 """
 
+import math
 import re
 import logging
 from typing import Optional, List, Any
@@ -35,7 +36,8 @@ VALID_SMILES_CHARS = set(
     '0123456789' +          # Ring numbers
     '()[]' +                # Branches and brackets
     '=#-+\\/@.' +           # Bonds and stereochemistry
-    '%'                     # Extended ring numbers
+    '%' +                   # Extended ring numbers
+    '*$:'                   # Wildcard (*), quadruple bond ($), aromatic bond/atom map (:)
 )
 
 # Maximum reasonable SMILES length
@@ -304,8 +306,8 @@ def sanitize_numeric(
     try:
         result = float(value)
 
-        # Check for infinity/NaN
-        if not (-float('inf') < result < float('inf')):
+        # Check for NaN and infinity using math.isfinite
+        if not math.isfinite(result):
             return default
 
         # Apply bounds

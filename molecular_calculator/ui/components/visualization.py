@@ -214,6 +214,15 @@ def render_distribution_plots(
             fig.update_traces(marker_color=colors[i % len(colors)])
 
             # Add reference lines for drug-like properties
+            # These thresholds are based on established drug-likeness rules:
+            # - QED (Quantitative Estimate of Drug-likeness): Values > 0.5 indicate
+            #   favorable drug-like properties. Reference: Bickerton et al. (2012)
+            # - LogP < 5: Lipinski's Rule of Five - compounds with LogP > 5 have
+            #   poor absorption. Reference: Lipinski et al. (1997)
+            # - MW < 500 Da: Lipinski's Rule of Five - oral drugs typically have
+            #   molecular weight < 500 Da for good absorption
+            # - TPSA < 140 A^2: Veber's rules - compounds with TPSA > 140 have
+            #   poor oral bioavailability. Reference: Veber et al. (2002)
             if prop == 'QED':
                 fig.add_vline(x=0.5, line_dash="dot", line_color="orange",
                             annotation_text="QED > 0.5 (Drug-like)", annotation_position="bottom")

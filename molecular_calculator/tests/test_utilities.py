@@ -134,15 +134,45 @@ class TestCache:
         assert cache.get("nonexistent") is None
 
     def test_ttl_cache_expiration(self):
-        """Test cache expiration."""
+        """Test cache expiration using time mocking for reliability.
+
+        This test uses mocking instead of time.sleep() to avoid flaky behavior
+        due to timing variations across different systems and CI environments.
+        """
         from molecular_calculator.utils.cache import TTLCache
 
-        cache = TTLCache(maxsize=100, ttl=0.1)  # 100ms TTL
+        cache = TTLCache(maxsize=100, ttl=60)  # 60 second TTL
         cache.set("key1", "value1")
 
+        # Verify value is accessible
         assert cache.get("key1") == "value1"
-        time.sleep(0.2)  # Wait for expiration
-        assert cache.get("key1") is None
+
+        # Mock time.time() to simulate expiration
+        # The cache stores entry time and checks if (current_time - entry_time) > ttl
+        with patch('time.time') as mock_time:
+            # Set time to 61 seconds after cache was set (beyond TTL)
+            current_time = time.time()
+            mock_time.return_value = current_time + 61
+            assert cache.get("key1") is None, "Cache entry should expire after TTL"
+
+    def test_ttl_cache_expiration_boundary(self):
+        """Test cache expiration at boundary conditions."""
+        from molecular_calculator.utils.cache import TTLCache
+
+        cache = TTLCache(maxsize=100, ttl=10)  # 10 second TTL
+        cache.set("key1", "value1")
+
+        # Before expiration
+        with patch('time.time') as mock_time:
+            current_time = time.time()
+            mock_time.return_value = current_time + 9  # Just before TTL
+            assert cache.get("key1") == "value1", "Cache should still be valid before TTL"
+
+        # Right at expiration
+        with patch('time.time') as mock_time:
+            current_time = time.time()
+            mock_time.return_value = current_time + 11  # Just after TTL
+            assert cache.get("key1") is None, "Cache should expire after TTL"
 
     def test_ttl_cache_maxsize(self):
         """Test cache eviction at maxsize."""

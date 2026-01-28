@@ -389,7 +389,7 @@ def get_structure_viewer_component(chart_id="plotly_chart", x_col=None, y_col=No
                         infoDiv.innerHTML = `
                             <div class="error-message-{chart_id}">
                                 No SMILES data available for this point<br>
-                                <small>Debug: ${{JSON.stringify(point.customdata || 'undefined')}}</small>
+                                <small>Debug: ${{escapeHtml(JSON.stringify(point.customdata || 'undefined'))}}</small>
                             </div>
                         `;
                         panel.classList.add('open');

@@ -24,35 +24,67 @@ class TestMolecularCalculator(unittest.TestCase):
     """Test suite for MolecularCalculator class"""
 
     def setUp(self):
-        """Set up test data"""
+        """Set up test data with well-characterized molecules.
+
+        Test molecules were selected based on:
+        1. Well-established properties in scientific literature
+        2. Diverse structural features
+        3. Known expected values from trusted sources
+
+        Expected values are documented with their sources for verification.
+        """
         # Test molecules with known properties
+        # =====================================================================
+        # ASPIRIN (Acetylsalicylic acid)
+        # Reference: PubChem CID 2244, DrugBank DB00945
+        # MW verified against PubChem (180.16 g/mol, using average mass)
+        # LogP: Literature values range 1.19-1.43 (RDKit calculates ~1.3)
+        # HBD: 1 (carboxylic acid OH)
+        # HBA: RDKit counts 3 (two carbonyl O + ester O, not the acidic OH)
+        # =====================================================================
         self.test_molecules = {
             'aspirin': {
                 'smiles': 'CC(=O)OC1=CC=CC=C1C(=O)O',
                 'inchi': 'InChI=1S/C9H8O4/c1-6(10)13-8-5-3-2-4-7(8)9(11)12/h2-5H,1H3,(H,11,12)',
                 'inchi_key': 'BSYNRYMUTXBXSQ-UHFFFAOYSA-N',
-                'expected_mw': 180.158,  # Expected molecular weight
-                'expected_logp_range': (1.0, 2.0),  # Expected LogP range
-                'expected_hbd': 1,  # Hydrogen bond donors
-                'expected_hba': 3   # RDKit counts 3 acceptors (2 C=O + 1 ester O)
+                'expected_mw': 180.158,  # PubChem: 180.16 g/mol (monoisotopic: 180.042)
+                'expected_logp_range': (1.0, 2.0),  # Literature range, RDKit ~1.3
+                'expected_hbd': 1,  # One carboxylic acid hydrogen
+                'expected_hba': 3   # RDKit: 2 carbonyl O + 1 ester O
             },
+            # =====================================================================
+            # CAFFEINE
+            # Reference: PubChem CID 2519, DrugBank DB00201
+            # MW: 194.19 g/mol (PubChem)
+            # LogP: -0.07 (experimental), RDKit may vary due to calculation method
+            # HBD: 0 (no OH or NH groups)
+            # HBA: 6 (4 nitrogens + 2 carbonyl oxygens)
+            # =====================================================================
             'caffeine': {
                 'smiles': 'CN1C=NC2=C1C(=O)N(C(=O)N2C)C',
                 'inchi': 'InChI=1S/C8H10N4O2/c1-10-4-9-6-5(10)7(13)12(3)8(14)11(6)2/h4H,1-3H3',
                 'inchi_key': 'RYYVLZVUVIJVGH-UHFFFAOYSA-N',
-                'expected_mw': 194.191,
-                'expected_logp_range': (-2.0, 0.5),  # Broader range for RDKit LogP calculation
-                'expected_hbd': 0,
-                'expected_hba': 6
+                'expected_mw': 194.191,  # PubChem: 194.19 g/mol
+                'expected_logp_range': (-2.0, 0.5),  # Broader range for RDKit variance
+                'expected_hbd': 0,  # No H-bond donors
+                'expected_hba': 6   # 4N + 2 carbonyl O
             },
+            # =====================================================================
+            # ETHANOL
+            # Reference: PubChem CID 702
+            # MW: 46.07 g/mol (PubChem)
+            # LogP: -0.31 (experimental), simple molecule for validation
+            # HBD: 1 (hydroxyl group)
+            # HBA: 1 (oxygen)
+            # =====================================================================
             'ethanol': {
                 'smiles': 'CCO',
                 'inchi': 'InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3',
                 'inchi_key': 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N',
-                'expected_mw': 46.069,
-                'expected_logp_range': (-0.5, 0.0),
-                'expected_hbd': 1,
-                'expected_hba': 1
+                'expected_mw': 46.069,  # PubChem: 46.07 g/mol
+                'expected_logp_range': (-0.5, 0.0),  # Experimental: -0.31
+                'expected_hbd': 1,  # One OH hydrogen
+                'expected_hba': 1   # One oxygen
             }
         }
 
@@ -377,6 +409,130 @@ class TestMolecularCalculator(unittest.TestCase):
             with self.subTest(smiles=smiles):
                 properties = MolecularCalculator.calculate_molecular_properties(smiles)
                 self.assertGreater(len(properties), 0, f"Failed to process stereochemical SMILES: {smiles}")
+
+
+class TestInvalidStereochemistry(unittest.TestCase):
+    """Test handling of malformed or invalid stereochemistry SMILES.
+
+    RDKit may reject or warn about certain stereochemical notations.
+    These tests ensure the calculator handles these cases gracefully.
+    """
+
+    def test_conflicting_chiral_centers(self):
+        """Test SMILES with potentially conflicting stereochemistry.
+
+        Some SMILES with conflicting or ambiguous stereochemistry may be
+        accepted by RDKit but sanitized/corrected.
+        """
+        # Valid chiral SMILES - should process correctly
+        valid_chiral = 'C[C@H](O)CC'  # Simple chiral center
+        properties = MolecularCalculator.calculate_molecular_properties(valid_chiral)
+        self.assertGreater(len(properties), 0, "Valid chiral SMILES should process")
+
+    def test_malformed_chiral_notation(self):
+        """Test SMILES with malformed chiral notation.
+
+        Invalid stereochemistry notation should either be corrected by RDKit
+        or result in empty properties (graceful handling).
+        """
+        # These may be rejected or processed by RDKit depending on version
+        test_cases = [
+            '[C@@]',           # Incomplete chiral specification
+            '[C@@@H]',         # Invalid: three @ symbols
+            'C[C@H]C',         # Chiral center with only 2 substituents specified
+        ]
+
+        for smiles in test_cases:
+            with self.subTest(smiles=smiles):
+                # Should not raise exception - should return empty dict or valid properties
+                try:
+                    properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                    # Either empty (rejected) or valid (corrected) is acceptable
+                    self.assertIsInstance(properties, dict)
+                except Exception as e:
+                    self.fail(f"Exception raised for SMILES '{smiles}': {e}")
+
+    def test_undefined_stereochemistry(self):
+        """Test SMILES with undefined stereochemistry at chiral centers.
+
+        Molecules without stereochemistry defined are valid; RDKit should process them.
+        """
+        # No stereochemistry defined but has potential chiral centers
+        smiles_undefined = 'CC(O)CC'  # No @/@@, but C2 is potentially chiral
+        properties = MolecularCalculator.calculate_molecular_properties(smiles_undefined)
+        self.assertGreater(len(properties), 0, "Undefined stereochemistry should process")
+
+    def test_e_z_isomer_notation(self):
+        """Test E/Z isomer notation in SMILES."""
+        test_cases = [
+            ('C/C=C/C', 'E-2-butene'),      # E configuration
+            ('C/C=C\\C', 'Z-2-butene'),     # Z configuration
+            ('C=CC=C', 'butadiene'),        # No E/Z specification
+        ]
+
+        for smiles, name in test_cases:
+            with self.subTest(name=name):
+                properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                self.assertGreater(len(properties), 0, f"Failed to process {name}")
+
+    def test_inconsistent_double_bond_stereo(self):
+        """Test SMILES with potentially inconsistent double bond stereochemistry."""
+        # These SMILES have ambiguous or partial stereochemistry
+        test_cases = [
+            'C/C=CC',          # Partial E/Z notation (one side only)
+            'C=C/C=C',         # Mixed defined/undefined
+        ]
+
+        for smiles in test_cases:
+            with self.subTest(smiles=smiles):
+                try:
+                    properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                    self.assertIsInstance(properties, dict)
+                except Exception as e:
+                    self.fail(f"Exception raised for SMILES '{smiles}': {e}")
+
+    def test_atropisomer_notation(self):
+        """Test axial chirality (atropisomerism) if supported."""
+        # BINAP-like structure (simplified)
+        # Axial chirality may or may not be supported depending on RDKit version
+        test_smiles = 'c1ccc2c(c1)-c1ccccc1-2'  # Simplified biphenyl
+        properties = MolecularCalculator.calculate_molecular_properties(test_smiles)
+        self.assertIsInstance(properties, dict)
+
+    def test_allene_stereochemistry(self):
+        """Test allene with axial chirality."""
+        # Allenes can have chirality due to cumulated double bonds
+        allene = 'C=C=C'  # Simple allene without specified chirality
+        properties = MolecularCalculator.calculate_molecular_properties(allene)
+        self.assertGreater(len(properties), 0, "Allene should process")
+
+    def test_complex_stereochemistry(self):
+        """Test molecules with multiple stereochemical features."""
+        # Multiple chiral centers and E/Z bonds
+        complex_smiles = 'C[C@H](O)/C=C/[C@@H](C)O'
+        properties = MolecularCalculator.calculate_molecular_properties(complex_smiles)
+        self.assertGreater(len(properties), 0, "Complex stereochemistry should process")
+
+    def test_ring_stereochemistry(self):
+        """Test stereochemistry in ring systems."""
+        test_cases = [
+            'C[C@H]1CCCCC1',     # Cis/trans in cyclohexane
+            'C1[C@H](O)CCCC1',   # Alcohol on cyclohexane with stereochemistry
+            '[C@H]12CC[C@@H](CC1)CC2',  # Bicyclic with stereochemistry
+        ]
+
+        for smiles in test_cases:
+            with self.subTest(smiles=smiles):
+                properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                # Should either process or gracefully fail
+                self.assertIsInstance(properties, dict)
+
+    def test_isotope_with_stereochemistry(self):
+        """Test isotopically labeled molecules with stereochemistry."""
+        # Deuterium-labeled with chiral center
+        labeled = '[2H]C([2H])([2H])[C@H](O)C'
+        properties = MolecularCalculator.calculate_molecular_properties(labeled)
+        self.assertIsInstance(properties, dict)
 
 
 class TestPropertyExplanations(unittest.TestCase):
@@ -1092,6 +1248,293 @@ class TestLigandEfficiency(unittest.TestCase):
         from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
         delta_g = LigandEfficiencyCalculator.calculate_delta_g(1e-9)
         self.assertLess(delta_g, 0)  # Should be negative (favorable binding)
+
+
+class TestLigandEfficiencyEdgeCases(unittest.TestCase):
+    """Test edge cases for Ligand Efficiency calculations.
+
+    These tests ensure the LEI calculations handle edge cases gracefully:
+    - Zero heavy atoms (division by zero protection)
+    - Zero polar atoms (division by zero protection)
+    - Zero pKi values
+    - Negative pKi values
+    - Very large values
+    - Invalid SMILES
+    """
+
+    def test_zero_heavy_atoms_protection(self):
+        """Test that zero heavy atoms don't cause division by zero.
+
+        When heavy_atoms=0, NBEI, nBEI, and LEH should not be calculated
+        (avoiding division by zero).
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Calculate LEI with zero heavy atoms
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=100.0,
+            tpsa=50.0,
+            heavy_atoms=0,  # Zero heavy atoms - should not cause error
+            polar_atoms=2
+        )
+
+        # NBEI, nBEI, LEH require heavy atoms, should NOT be in results
+        self.assertNotIn('NBEI', results, "NBEI should not be calculated with zero heavy atoms")
+        self.assertNotIn('nBEI', results, "nBEI should not be calculated with zero heavy atoms")
+        self.assertNotIn('LEH', results, "LEH should not be calculated with zero heavy atoms")
+
+        # BEI, SEI, NSEI, LEP should still be calculated
+        self.assertIn('BEI', results, "BEI should still be calculated")
+        self.assertIn('SEI', results, "SEI should still be calculated")
+        self.assertIn('NSEI', results, "NSEI should still be calculated")
+        self.assertIn('LEP', results, "LEP should still be calculated")
+
+    def test_zero_polar_atoms_protection(self):
+        """Test that zero polar atoms don't cause division by zero.
+
+        When polar_atoms=0, NSEI and LEP should not be calculated
+        (avoiding division by zero).
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Calculate LEI with zero polar atoms
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=100.0,
+            tpsa=50.0,
+            heavy_atoms=10,
+            polar_atoms=0  # Zero polar atoms - should not cause error
+        )
+
+        # NSEI and LEP require polar atoms, should NOT be in results
+        self.assertNotIn('NSEI', results, "NSEI should not be calculated with zero polar atoms")
+        self.assertNotIn('LEP', results, "LEP should not be calculated with zero polar atoms")
+
+        # Other LEIs should still be calculated
+        self.assertIn('BEI', results, "BEI should still be calculated")
+        self.assertIn('NBEI', results, "NBEI should still be calculated")
+        self.assertIn('SEI', results, "SEI should still be calculated")
+        self.assertIn('LEH', results, "LEH should still be calculated")
+
+    def test_zero_mw_protection(self):
+        """Test that zero MW doesn't cause division by zero."""
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=0,  # Zero MW - should not cause error
+            tpsa=50.0,
+            heavy_atoms=10,
+            polar_atoms=2
+        )
+
+        # BEI and mBEI require MW, should NOT be in results
+        self.assertNotIn('BEI', results, "BEI should not be calculated with zero MW")
+        self.assertNotIn('mBEI', results, "mBEI should not be calculated with zero MW")
+
+    def test_zero_tpsa_protection(self):
+        """Test that zero TPSA doesn't cause division by zero."""
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=100.0,
+            tpsa=0,  # Zero TPSA - should not cause error
+            heavy_atoms=10,
+            polar_atoms=2
+        )
+
+        # SEI requires TPSA, should NOT be in results
+        self.assertNotIn('SEI', results, "SEI should not be calculated with zero TPSA")
+
+    def test_zero_pki_values(self):
+        """Test LEI calculations with zero pKi.
+
+        pKi=0 is unusual but valid (very weak binder, Ki=1M).
+        Calculations should complete without error.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # pKi=0 means Ki=1M (10^0 = 1)
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=0.0,
+            mw=100.0,
+            tpsa=50.0,
+            heavy_atoms=10,
+            polar_atoms=2
+        )
+
+        # Should complete without error
+        self.assertIsInstance(results, dict)
+
+        # Values should be 0 or close to 0 for pKi=0
+        if 'BEI' in results:
+            self.assertEqual(results['BEI'], 0.0, "BEI should be 0 when pKi is 0")
+        if 'NBEI' in results:
+            self.assertEqual(results['NBEI'], 0.0, "NBEI should be 0 when pKi is 0")
+
+    def test_negative_pki_values(self):
+        """Test LEI calculations with negative pKi.
+
+        Negative pKi values are unusual (Ki > 1M) but mathematically valid.
+        The calculation should handle them without errors.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # pKi=-1 means Ki=10M (very weak binding)
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=-1.0,
+            mw=100.0,
+            tpsa=50.0,
+            heavy_atoms=10,
+            polar_atoms=2
+        )
+
+        # Should complete without error
+        self.assertIsInstance(results, dict)
+
+        # BEI with negative pKi should be negative
+        if 'BEI' in results:
+            self.assertLess(results['BEI'], 0, "BEI should be negative when pKi is negative")
+
+    def test_very_large_pki_values(self):
+        """Test LEI calculations with very large pKi values.
+
+        Very large pKi (e.g., 15) represents extremely tight binding (Ki=1fM).
+        Should handle without overflow errors.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=15.0,  # Ki = 10^-15 M = 1 femtomolar
+            mw=500.0,
+            tpsa=100.0,
+            heavy_atoms=30,
+            polar_atoms=6
+        )
+
+        # Should complete without error
+        self.assertIsInstance(results, dict)
+
+        # BEI should be positive and large
+        if 'BEI' in results:
+            self.assertGreater(results['BEI'], 0, "BEI should be positive for large pKi")
+            self.assertIsInstance(results['BEI'], float)
+            # Check no overflow (should be finite)
+            self.assertTrue(np.isfinite(results['BEI']), "BEI should be finite")
+
+    def test_very_large_mw_values(self):
+        """Test LEI calculations with very large molecular weights.
+
+        Large molecules (e.g., peptides) can have MW > 5000.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=10000.0,  # Very large molecule (10 kDa)
+            tpsa=500.0,
+            heavy_atoms=500,
+            polar_atoms=100
+        )
+
+        # Should complete without error
+        self.assertIsInstance(results, dict)
+
+        # BEI should be small for large molecules
+        if 'BEI' in results:
+            self.assertLess(results['BEI'], 1.0, "BEI should be small for large molecules")
+
+    def test_none_values_handling(self):
+        """Test LEI calculations when optional parameters are None.
+
+        Only pKi is required; other parameters can be None.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Only pKi provided
+        results = LigandEfficiencyCalculator.calculate_lei_values(
+            pki=6.0,
+            mw=None,
+            tpsa=None,
+            heavy_atoms=None,
+            polar_atoms=None
+        )
+
+        # Should complete without error but return empty dict
+        self.assertIsInstance(results, dict)
+        # No LEIs can be calculated without the required properties
+        self.assertEqual(len(results), 0, "No LEIs should be calculated when all properties are None")
+
+    def test_invalid_smiles_heavy_atoms(self):
+        """Test heavy atom counting with invalid SMILES."""
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Invalid SMILES should return 0
+        count = LigandEfficiencyCalculator.count_heavy_atoms('INVALID_SMILES')
+        self.assertEqual(count, 0, "Invalid SMILES should return 0 heavy atoms")
+
+        count = LigandEfficiencyCalculator.count_heavy_atoms('')
+        self.assertEqual(count, 0, "Empty string should return 0 heavy atoms")
+
+        count = LigandEfficiencyCalculator.count_heavy_atoms(None)
+        self.assertEqual(count, 0, "None should return 0 heavy atoms")
+
+    def test_invalid_smiles_polar_atoms(self):
+        """Test polar atom counting with invalid SMILES."""
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Invalid SMILES should return 0
+        count = LigandEfficiencyCalculator.count_polar_atoms('INVALID_SMILES')
+        self.assertEqual(count, 0, "Invalid SMILES should return 0 polar atoms")
+
+        count = LigandEfficiencyCalculator.count_polar_atoms('')
+        self.assertEqual(count, 0, "Empty string should return 0 polar atoms")
+
+        count = LigandEfficiencyCalculator.count_polar_atoms(None)
+        self.assertEqual(count, 0, "None should return 0 polar atoms")
+
+    def test_delta_g_with_zero_ki(self):
+        """Test delta G calculation with zero Ki (edge case).
+
+        Ki=0 is physically impossible but should be handled gracefully.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Should return 0 for invalid Ki <= 0
+        delta_g = LigandEfficiencyCalculator.calculate_delta_g(0.0)
+        self.assertEqual(delta_g, 0.0, "Delta G should be 0 for Ki=0")
+
+        delta_g = LigandEfficiencyCalculator.calculate_delta_g(-1.0)
+        self.assertEqual(delta_g, 0.0, "Delta G should be 0 for negative Ki")
+
+    def test_molecule_with_no_polar_atoms(self):
+        """Test counting polar atoms in molecules with no N or O.
+
+        Molecules like hydrocarbons have no polar atoms.
+        """
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Benzene has no N or O
+        count = LigandEfficiencyCalculator.count_polar_atoms('c1ccccc1')
+        self.assertEqual(count, 0, "Benzene should have 0 polar atoms")
+
+        # Hexane has no N or O
+        count = LigandEfficiencyCalculator.count_polar_atoms('CCCCCC')
+        self.assertEqual(count, 0, "Hexane should have 0 polar atoms")
+
+    def test_molecule_with_many_polar_atoms(self):
+        """Test counting polar atoms in molecules with many N and O."""
+        from molecular_calculator.services.ligand_efficiency import LigandEfficiencyCalculator
+
+        # Urea: 2N + 1O = 3 polar atoms
+        count = LigandEfficiencyCalculator.count_polar_atoms('NC(N)=O')
+        self.assertEqual(count, 3, "Urea should have 3 polar atoms (2N + 1O)")
+
+        # Glycine: 1N + 2O = 3 polar atoms
+        count = LigandEfficiencyCalculator.count_polar_atoms('NCC(=O)O')
+        self.assertEqual(count, 3, "Glycine should have 3 polar atoms (1N + 2O)")
 
 
 # =============================================================================
