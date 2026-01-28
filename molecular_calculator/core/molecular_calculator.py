@@ -375,10 +375,11 @@ class MolecularCalculator:
             enable_online_lookup: Allow API calls for InChI Key conversion
 
         Returns:
-            DataFrame with calculated properties
+            DataFrame with calculated properties.
+            Returns empty DataFrame if input is None or empty.
 
         Raises:
-            ValueError: If DataFrame is empty or column not found
+            ValueError: If column not found in DataFrame
         """
         # Validate DataFrame is not empty
         if df is None or df.empty:

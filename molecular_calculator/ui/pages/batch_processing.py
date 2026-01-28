@@ -9,6 +9,7 @@ import numpy as np
 from typing import Optional, Set, Dict, List
 
 from molecular_calculator.core import MolecularCalculator
+from molecular_calculator.models import InputFormat
 from molecular_calculator.ui.components import (
     render_file_upload_section,
     render_property_selector,
@@ -390,6 +391,8 @@ def _process_batch(
             progress_bar.progress(0.95, text="Calculating assay interference flags...")
 
             # Calculate flags for each molecule (use detailed dict for pattern info)
+            # Create a calculator instance for format detection and conversion
+            calculator = MolecularCalculator()
             flag_results = []
             empty_result = {
                 'PAINS': 0, 'PAINS_Details': '',
@@ -398,11 +401,29 @@ def _process_batch(
                 'Fluorescence': 0, 'Fluorescence_Details': '',
                 'Thiol': 0, 'Thiol_Details': ''
             }
-            for smiles in final_df[smiles_col]:
-                if pd.isna(smiles):
+            for input_value in final_df[smiles_col]:
+                if pd.isna(input_value):
                     flag_results.append(empty_result.copy())
                 else:
-                    flags = get_interference_flags_from_smiles(str(smiles))
+                    input_str = str(input_value)
+                    # Detect format and convert to SMILES if needed
+                    input_format = calculator.conversion_service.detect_format(input_str)
+                    if input_format != InputFormat.SMILES:
+                        conversion_result = calculator.convert(
+                            input_str,
+                            input_format=input_format,
+                            enable_online_lookup=enable_online_lookup
+                        )
+                        if conversion_result.success:
+                            smiles_for_flags = conversion_result.smiles
+                        else:
+                            # Conversion failed, append empty result
+                            flag_results.append(empty_result.copy())
+                            continue
+                    else:
+                        smiles_for_flags = input_str
+
+                    flags = get_interference_flags_from_smiles(smiles_for_flags)
                     flag_results.append(flags.to_detailed_dict())
 
             # Add flag columns and detail columns to dataframe

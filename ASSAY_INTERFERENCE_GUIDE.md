@@ -47,7 +47,7 @@ A compound that shows "activity" due to assay interference will eventually fail 
 
 Compounds can interfere with assays through several mechanisms:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    ASSAY INTERFERENCE MECHANISMS                     │
 ├─────────────────────────────────────────────────────────────────────┤

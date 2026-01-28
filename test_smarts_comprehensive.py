@@ -362,7 +362,7 @@ FLUORESCENT_NEGATIVES = {
 # TEST RUNNER
 # =============================================================================
 
-def test_pattern(smarts_dict, positives, negatives, category_name):
+def run_pattern_tests(smarts_dict, positives, negatives, category_name):
     """Test a category of patterns against positive and negative examples."""
     results = {
         'true_positives': 0,
@@ -485,7 +485,7 @@ def main():
     print(f"\nTOTAL TEST CASES: {total_tests}")
 
     # Run tests
-    thiol_results = test_pattern(
+    thiol_results = run_pattern_tests(
         THIOL_REACTIVE_SMARTS,
         THIOL_REACTIVE_POSITIVES,
         THIOL_REACTIVE_NEGATIVES,
@@ -493,7 +493,7 @@ def main():
     )
     thiol_accuracy = print_results(thiol_results, "THIOL-REACTIVE")
 
-    redox_results = test_pattern(
+    redox_results = run_pattern_tests(
         REDOX_ACTIVE_SMARTS,
         REDOX_ACTIVE_POSITIVES,
         REDOX_ACTIVE_NEGATIVES,
@@ -501,7 +501,7 @@ def main():
     )
     redox_accuracy = print_results(redox_results, "REDOX-ACTIVE")
 
-    fluor_results = test_pattern(
+    fluor_results = run_pattern_tests(
         FLUORESCENT_SMARTS,
         FLUORESCENT_POSITIVES,
         FLUORESCENT_NEGATIVES,

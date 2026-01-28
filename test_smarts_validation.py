@@ -126,6 +126,8 @@ def test_smarts_compilation():
             else:
                 print(f"  OK: {name}")
 
+    # Assert no compilation failures so pytest will fail the test
+    assert len(failures) == 0, f"SMARTS compilation failures: {failures}"
     return failures
 
 
@@ -173,16 +175,18 @@ def test_pattern_matching():
     # Test negative controls
     print(f"\nNegative control - acetamide (CC(=O)N - no C=C):")
     acetamide_mol = Chem.MolFromSmiles('CC(=O)N')
-    matched_any = False
+    false_positives = []
     for name, smarts in THIOL_REACTIVE_SMARTS.items():
         pattern = Chem.MolFromSmarts(smarts)
         if pattern and acetamide_mol:
             matches = acetamide_mol.HasSubstructMatch(pattern)
             if matches:
                 print(f"  FALSE POSITIVE: {name} matched!")
-                matched_any = True
-    if not matched_any:
+                false_positives.append(name)
+    if not false_positives:
         print(f"  OK: No false positives")
+    # Assert no false positives so pytest will fail the test
+    assert len(false_positives) == 0, f"Thiol-reactive false positives on acetamide: {false_positives}"
 
     # Test redox patterns
     print("\n--- REDOX-ACTIVE PATTERNS ---")

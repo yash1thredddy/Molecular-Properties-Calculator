@@ -27,19 +27,23 @@ logger = logging.getLogger(__name__)
 MAX_SMILES_IN_ERROR = 50
 
 
-def _truncate_smiles(smiles: str, max_length: int = MAX_SMILES_IN_ERROR) -> str:
+def _truncate_smiles(smiles: Any, max_length: int = MAX_SMILES_IN_ERROR) -> str:
     """Truncate SMILES string for safe inclusion in error messages.
 
     Args:
-        smiles: The SMILES string to truncate
+        smiles: The SMILES string to truncate (coerced to string if not already)
         max_length: Maximum length before truncation
 
     Returns:
         Truncated SMILES string with ellipsis if too long
     """
-    if not smiles or len(smiles) <= max_length:
-        return smiles
-    return smiles[:max_length] + "..."
+    if not smiles:
+        return ""
+    # Coerce to string to handle non-string inputs safely
+    smiles_str = str(smiles)
+    if len(smiles_str) <= max_length:
+        return smiles_str
+    return smiles_str[:max_length] + "..."
 
 
 class PropertyCalculator:

@@ -234,8 +234,8 @@ class TestNIHDetection(unittest.TestCase):
 
     def test_clean_molecule_no_nih(self):
         """Test that clean molecules don't trigger NIH alerts."""
-        # Simple benzene
-        mol = Chem.MolFromSmiles('c1ccc1')
+        # Simple benzene (correct SMILES: 6-membered aromatic ring)
+        mol = Chem.MolFromSmiles('c1ccccc1')
         has_alerts, names = check_nih_alerts(mol)
         self.assertFalse(has_alerts)
 

@@ -1263,7 +1263,7 @@ Properties are organized into logical groups:
 | **Ring Properties** | Aromatic_Rings, Aliphatic_Rings, Saturated_Rings, Ring_Count, Heteroatoms |
 | **Complexity** | BertzCT, Chi0, Chi1 |
 | **Additional** | CrippenLogP, CrippenMR, LabuteASA |
-| **Assay Interference** | PAINS, Aggregator, BRENK, NIH |
+| **Assay Interference** | PAINS, Aggregator, Redox, Fluorescence, Thiol |
 | **Ligand Efficiency Indices** | NSEI, NBEI, BEI, SEI, nBEI, mBEI, LEH, LEP |
 
 ---

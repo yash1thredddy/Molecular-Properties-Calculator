@@ -445,12 +445,9 @@ class TestInvalidStereochemistry(unittest.TestCase):
         for smiles in test_cases:
             with self.subTest(smiles=smiles):
                 # Should not raise exception - should return empty dict or valid properties
-                try:
-                    properties = MolecularCalculator.calculate_molecular_properties(smiles)
-                    # Either empty (rejected) or valid (corrected) is acceptable
-                    self.assertIsInstance(properties, dict)
-                except Exception as e:
-                    self.fail(f"Exception raised for SMILES '{smiles}': {e}")
+                properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                # Either empty (rejected) or valid (corrected) is acceptable
+                self.assertIsInstance(properties, dict)
 
     def test_undefined_stereochemistry(self):
         """Test SMILES with undefined stereochemistry at chiral centers.
@@ -485,11 +482,8 @@ class TestInvalidStereochemistry(unittest.TestCase):
 
         for smiles in test_cases:
             with self.subTest(smiles=smiles):
-                try:
-                    properties = MolecularCalculator.calculate_molecular_properties(smiles)
-                    self.assertIsInstance(properties, dict)
-                except Exception as e:
-                    self.fail(f"Exception raised for SMILES '{smiles}': {e}")
+                properties = MolecularCalculator.calculate_molecular_properties(smiles)
+                self.assertIsInstance(properties, dict)
 
     def test_atropisomer_notation(self):
         """Test axial chirality (atropisomerism) if supported."""

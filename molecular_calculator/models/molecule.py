@@ -312,7 +312,10 @@ class LigandEfficiencyIndices:
         return result
 
 
-# Property group definitions for UI display
+# Property group definitions for UI display and selection.
+# NOTE: Assay interference flags (PAINS, Aggregator, etc.) are calculated separately
+# via get_interference_flags_from_smiles() in assay_interference.py, not through
+# MolecularProperties.to_dict(). They are listed here for UI property selection purposes.
 PROPERTY_GROUPS: Dict[str, List[str]] = {
     PropertyGroup.BASIC.value: [
         'Molecular_Weight', 'Heavy_Atom_Count', 'Atom_Count',

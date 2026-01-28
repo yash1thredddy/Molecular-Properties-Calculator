@@ -122,8 +122,8 @@ def render_single_molecule_page(
             st.session_state.single_molecule_analyzed = False
             st.session_state.single_current_smiles = None
 
-    elif molecule_input is not None and molecule_input.strip() == '':
-        # Input contains only whitespace characters
+    elif molecule_input is not None and len(molecule_input) > 0 and molecule_input.strip() == '':
+        # Input contains only whitespace characters (user typed something but it's all whitespace)
         st.warning("⚠️ Please enter a valid molecular structure.")
 
     # Show property selection if molecule is analyzed

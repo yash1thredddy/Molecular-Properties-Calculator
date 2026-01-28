@@ -96,7 +96,7 @@ Thiol-reactive compounds covalently modify cysteine residues in proteins, causin
 
 ### Mechanism of Thiol Reactivity
 
-```
+```text
 Michael Addition (most common):
 Protein-SH + C=C-C=O → Protein-S-CH2-CH2-C=O (covalent adduct)
 

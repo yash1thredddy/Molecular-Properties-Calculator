@@ -14,7 +14,7 @@ The fixtures are organized into categories:
 
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -428,7 +428,7 @@ def property_names() -> List[str]:
 def create_mock_file(
     filename: str,
     content: bytes,
-    size: int = None
+    size: Optional[int] = None
 ) -> MagicMock:
     """Create a mock file object.
 
@@ -450,8 +450,8 @@ def create_mock_file(
 
 def create_test_dataframe(
     smiles_list: List[str],
-    names: List[str] = None,
-    activities: List[float] = None
+    names: Optional[List[str]] = None,
+    activities: Optional[List[float]] = None
 ) -> pd.DataFrame:
     """Create a test DataFrame with optional activity data.
 
