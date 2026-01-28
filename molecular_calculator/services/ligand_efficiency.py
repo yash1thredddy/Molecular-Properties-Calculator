@@ -260,7 +260,7 @@ class LigandEfficiencyCalculator:
                 if atom.GetSymbol() in ['N', 'O']:
                     count += 1
             return count
-        except:
+        except Exception:
             return 0
 
     @staticmethod
@@ -279,7 +279,7 @@ class LigandEfficiencyCalculator:
             if mol is None:
                 return 0
             return Descriptors.HeavyAtomCount(mol)
-        except:
+        except Exception:
             return 0
 
     @staticmethod
@@ -366,14 +366,18 @@ class LigandEfficiencyCalculator:
         # nBEI: -log10(Ki / Heavy Atom Count)
         if heavy_atoms is not None and heavy_atoms > 0:
             ratio = ki / heavy_atoms
-            results['nBEI'] = round(-math.log10(ratio), 4)
-            results['nBEI_error'] = round(pki_error, 4) if pki_error > 0 else 0.0
+            # Guard against log10 of zero or negative values
+            if ratio > 0:
+                results['nBEI'] = round(-math.log10(ratio), 4)
+                results['nBEI_error'] = round(pki_error, 4) if pki_error > 0 else 0.0
 
         # mBEI: -log10(Ki / MW)
         if mw is not None and mw > 0:
             ratio = ki / mw
-            results['mBEI'] = round(-math.log10(ratio), 4)
-            results['mBEI_error'] = round(pki_error, 4) if pki_error > 0 else 0.0
+            # Guard against log10 of zero or negative values
+            if ratio > 0:
+                results['mBEI'] = round(-math.log10(ratio), 4)
+                results['mBEI_error'] = round(pki_error, 4) if pki_error > 0 else 0.0
 
         # LEH (Hopkins): -ΔG / Heavy Atom Count
         if heavy_atoms is not None and heavy_atoms > 0:

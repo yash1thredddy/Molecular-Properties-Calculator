@@ -58,83 +58,142 @@ def render_property_selector(
     if default_expanded is None:
         default_expanded = ["Basic Properties", "Lipinski Properties", "Drug-likeness"]
 
-    # Initialize session state for selections
-    state_key = f"{key_prefix}_selected"
-    calc_all_key = f"{key_prefix}_calc_all"
-    prev_calc_all_key = f"{key_prefix}_prev_calc_all"
-
-    if state_key not in st.session_state:
-        st.session_state[state_key] = set()
-    if prev_calc_all_key not in st.session_state:
-        st.session_state[prev_calc_all_key] = False
-
     property_groups = get_all_property_groups(include_lei)
     all_properties = get_all_properties(include_lei)
 
-    # Calculate All checkbox
-    calc_all = st.checkbox(
-        "Calculate All Properties",
-        value=st.session_state.get(prev_calc_all_key, False),
-        key=calc_all_key
-    )
+    # Session state key for tracking selected properties
+    state_key = f"{key_prefix}_selected"
 
-    # Handle toggle changes
-    prev_calc_all = st.session_state.get(prev_calc_all_key, False)
-
-    if calc_all and not prev_calc_all:
-        # Just checked - select all properties
-        st.session_state[state_key] = all_properties.copy()
-    elif not calc_all and prev_calc_all:
-        # Just unchecked - clear all properties
+    # Initialize session state for selected properties
+    if state_key not in st.session_state:
         st.session_state[state_key] = set()
 
-    # Update previous state
-    st.session_state[prev_calc_all_key] = calc_all
+    # Initialize widget state keys on first run only (not on every render)
+    # This prevents the "value set via both default and Session State API" warning
+    calc_all_widget_key = f"{key_prefix}_calc_all_widget"
+    if calc_all_widget_key not in st.session_state:
+        st.session_state[calc_all_widget_key] = False
+
+    # Initialize group and property widget keys
+    for group_name, properties in property_groups.items():
+        group_widget_key = f"{key_prefix}_group_{group_name}_widget"
+        if group_widget_key not in st.session_state:
+            st.session_state[group_widget_key] = False
+        for prop in properties:
+            prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+            if prop_widget_key not in st.session_state:
+                st.session_state[prop_widget_key] = False
+
+    # Callback for "Calculate All" checkbox
+    def on_calc_all_change():
+        if st.session_state[calc_all_widget_key]:
+            st.session_state[state_key] = all_properties.copy()
+            # Update all group and individual checkbox widget states
+            for group_name, props in property_groups.items():
+                group_widget_key = f"{key_prefix}_group_{group_name}_widget"
+                st.session_state[group_widget_key] = True
+                for prop in props:
+                    prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+                    st.session_state[prop_widget_key] = True
+        else:
+            st.session_state[state_key] = set()
+            # Update all group and individual checkbox widget states
+            for group_name, props in property_groups.items():
+                group_widget_key = f"{key_prefix}_group_{group_name}_widget"
+                st.session_state[group_widget_key] = False
+                for prop in props:
+                    prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+                    st.session_state[prop_widget_key] = False
+
+    # Calculate All checkbox - use session state key only (no value= parameter)
+    calc_all = st.checkbox(
+        "Calculate All Properties",
+        key=calc_all_widget_key,
+        on_change=on_calc_all_change
+    )
 
     if calc_all:
         # When "Calculate All" is checked, show message and return all
-        st.info(f"✅ All {len(all_properties)} properties will be calculated")
+        st.info(f"All {len(all_properties)} properties will be calculated")
         return all_properties.copy()
+
+    # Create callbacks for group checkboxes
+    def make_group_callback(group_name: str, props: List[str]):
+        def callback():
+            widget_key = f"{key_prefix}_group_{group_name}_widget"
+            if st.session_state[widget_key]:
+                # Add all properties in group
+                st.session_state[state_key].update(props)
+                # Also update individual checkbox widget states
+                for prop in props:
+                    prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+                    st.session_state[prop_widget_key] = True
+            else:
+                # Remove all properties in group
+                st.session_state[state_key] -= set(props)
+                # Also update individual checkbox widget states
+                for prop in props:
+                    prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+                    st.session_state[prop_widget_key] = False
+        return callback
+
+    # Create callbacks for individual property checkboxes
+    def make_prop_callback(prop: str, group_name: str, group_props: List[str]):
+        def callback():
+            widget_key = f"{key_prefix}_prop_{prop}_widget"
+            if st.session_state[widget_key]:
+                st.session_state[state_key].add(prop)
+            else:
+                st.session_state[state_key].discard(prop)
+            # Update group checkbox state based on whether all props in group are selected
+            all_in_group_selected = all(
+                p in st.session_state[state_key] for p in group_props
+            )
+            group_widget_key = f"{key_prefix}_group_{group_name}_widget"
+            st.session_state[group_widget_key] = all_in_group_selected
+        return callback
 
     # Create expandable sections for each property group
     for group_name, properties in property_groups.items():
         is_expanded = group_name in default_expanded
 
-        with st.expander(f"📊 {group_name}", expanded=is_expanded):
-            # Group checkbox to select/deselect all in group
-            group_selected = all(
+        with st.expander(f"{group_name}", expanded=is_expanded):
+            # Sync group widget state with actual selection state
+            group_all_selected = all(
                 prop in st.session_state[state_key]
                 for prop in properties
             )
+            group_widget_key = f"{key_prefix}_group_{group_name}_widget"
+            # Only update if out of sync (avoid triggering rerun)
+            if st.session_state[group_widget_key] != group_all_selected:
+                st.session_state[group_widget_key] = group_all_selected
 
-            group_check = st.checkbox(
+            # Group "Select All" checkbox - use session state key only
+            st.checkbox(
                 f"Select All {group_name}",
-                value=group_selected,
-                key=f"{key_prefix}_group_{group_name}"
+                key=group_widget_key,
+                on_change=make_group_callback(group_name, properties)
             )
-
-            if group_check and not group_selected:
-                st.session_state[state_key].update(properties)
-            elif not group_check and group_selected:
-                st.session_state[state_key] -= set(properties)
 
             # Individual property checkboxes
             cols = st.columns(2 if len(properties) > 4 else 1)
 
             for i, prop in enumerate(properties):
                 col_idx = i % 2 if len(properties) > 4 else 0
+                prop_widget_key = f"{key_prefix}_prop_{prop}_widget"
+
+                # Sync widget state with selection state
+                is_selected = prop in st.session_state[state_key]
+                if st.session_state[prop_widget_key] != is_selected:
+                    st.session_state[prop_widget_key] = is_selected
 
                 with cols[col_idx]:
-                    checked = st.checkbox(
+                    # Use session state key only (no value= parameter)
+                    st.checkbox(
                         prop.replace('_', ' '),
-                        value=prop in st.session_state[state_key],
-                        key=f"{key_prefix}_prop_{prop}"
+                        key=prop_widget_key,
+                        on_change=make_prop_callback(prop, group_name, properties)
                     )
-
-                    if checked:
-                        st.session_state[state_key].add(prop)
-                    else:
-                        st.session_state[state_key].discard(prop)
 
     return st.session_state[state_key].copy()
 

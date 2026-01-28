@@ -11,9 +11,13 @@ with features like:
 import copy
 import hashlib
 import logging
+import threading
 from typing import Any, Optional, Dict, List, Callable
 
 logger = logging.getLogger(__name__)
+
+# Lock for thread-safe session state operations
+_session_state_lock = threading.Lock()
 
 
 def _default_factory(value: Any) -> Callable[[], Any]:
@@ -231,7 +235,7 @@ class SessionState:
     def file_changed(cls, file) -> bool:
         """Check if an uploaded file has changed.
 
-        Uses MD5 hash to detect when a file with the same name
+        Uses SHA-256 hash to detect when a file with the same name
         has different content.
 
         Args:
@@ -284,7 +288,8 @@ class SessionState:
     def get_or_set(cls, key: str, default: Any) -> Any:
         """Get value if exists, otherwise set and return default.
 
-        This is useful for lazy initialization.
+        This is useful for lazy initialization. Thread-safe using locking
+        to prevent TOCTOU race conditions.
 
         Args:
             key: Session state key
@@ -297,9 +302,10 @@ class SessionState:
             >>> # Initialize on first access
             >>> cache = SessionState.get_or_set('cache', {})
         """
-        if not cls.has(key):
-            cls.set(key, default)
-        return cls.get(key)
+        with _session_state_lock:
+            if not cls.has(key):
+                cls.set(key, default)
+            return cls.get(key)
 
     @classmethod
     def update(cls, key: str, updates: Dict[str, Any]) -> None:

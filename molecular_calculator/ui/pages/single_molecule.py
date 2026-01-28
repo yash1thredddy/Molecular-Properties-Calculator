@@ -4,6 +4,7 @@ This module provides the single molecule analysis page for the Streamlit app.
 """
 
 import streamlit as st
+import pandas as pd
 from typing import Optional
 
 from molecular_calculator.core import MolecularCalculator
@@ -91,7 +92,7 @@ def render_single_molecule_page(
 
         if input_format == 'inchi_key' and not enable_online_lookup:
             st.warning(
-                "InChI Key conversion is disabled. "
+                "⚠️ InChI Key conversion is disabled. "
                 "Please enable 'InChI Key conversion' in Settings."
             )
         else:
@@ -121,8 +122,9 @@ def render_single_molecule_page(
             st.session_state.single_molecule_analyzed = False
             st.session_state.single_current_smiles = None
 
-    elif molecule_input and not molecule_input.strip():
-        st.warning("Please enter a valid molecular structure.")
+    elif molecule_input is not None and len(molecule_input) > 0 and molecule_input.strip() == '':
+        # Input contains only whitespace characters (user typed something but it's all whitespace)
+        st.warning("⚠️ Please enter a valid molecular structure.")
 
     # Show property selection if molecule is analyzed
     if st.session_state.single_molecule_analyzed and st.session_state.single_current_smiles:
@@ -140,7 +142,7 @@ def render_single_molecule_page(
         # Calculate button
         if st.button("Calculate Properties", type="primary", key="single_calculate_btn"):
             if not selected_properties:
-                st.warning("Please select at least one property to calculate.")
+                st.warning("⚠️ Please select at least one property to calculate.")
             else:
                 _calculate_and_display_properties(
                     st.session_state.single_current_smiles,
@@ -167,39 +169,46 @@ def _calculate_and_display_properties(
         result = calculator.calculate(smiles)
 
     if not result.success:
-        st.error(f"Calculation failed: {result.error}")
+        st.error(f"❌ Calculation failed: {result.error}")
         return
 
-    # Filter to selected properties
+    # Check if any interference properties are selected
+    interference_props = {'PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'}
+    selected_interference = selected_properties & interference_props
+
+    # Filter to selected properties (excluding interference flags which are handled separately)
     all_props = result.properties.to_dict()
     filtered_props = {
         k: v for k, v in all_props.items()
-        if k in selected_properties
+        if k in selected_properties and k not in interference_props
     }
 
-    if not filtered_props:
-        st.warning("No properties were calculated for this molecule.")
+    # Check if we have any properties to show (either regular props or interference flags)
+    if not filtered_props and not selected_interference:
+        st.warning("⚠️ No properties were calculated for this molecule.")
         return
 
-    # Display results
-    st.subheader("Calculated Properties")
-    render_properties_by_group(filtered_props)
+    # Display regular properties if any were selected
+    if filtered_props:
+        st.subheader("Calculated Properties")
+        render_properties_by_group(filtered_props)
 
-    # Calculate and display interference flags
-    st.markdown("---")
-    interference_flags = get_interference_flags_from_smiles(smiles)
-    render_interference_section(flags=interference_flags, show_details=True)
+    # Calculate and display interference flags if any were selected
+    interference_flags = None
+    if selected_interference:
+        if filtered_props:
+            st.markdown("---")
+        interference_flags = get_interference_flags_from_smiles(smiles)
+        render_interference_section(flags=interference_flags, show_details=True)
 
     # Download options
     st.markdown("---")
     st.subheader("Export Results")
 
-    import pandas as pd
-    results_df = pd.DataFrame([{
-        'SMILES': smiles,
-        **filtered_props,
-        **interference_flags.to_dict()
-    }])
+    export_data = {'SMILES': smiles, **filtered_props}
+    if interference_flags:
+        export_data.update(interference_flags.to_dict())
+    results_df = pd.DataFrame([export_data])
 
     col1, col2 = st.columns(2)
 

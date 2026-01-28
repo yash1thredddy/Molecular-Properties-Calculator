@@ -22,6 +22,29 @@ from molecular_calculator.utils.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# Maximum length of SMILES strings to include in error messages.
+# Longer strings are truncated to prevent information disclosure of full molecular structures.
+MAX_SMILES_IN_ERROR = 50
+
+
+def _truncate_smiles(smiles: Any, max_length: int = MAX_SMILES_IN_ERROR) -> str:
+    """Truncate SMILES string for safe inclusion in error messages.
+
+    Args:
+        smiles: The SMILES string to truncate (coerced to string if not already)
+        max_length: Maximum length before truncation
+
+    Returns:
+        Truncated SMILES string with ellipsis if too long
+    """
+    if not smiles:
+        return ""
+    # Coerce to string to handle non-string inputs safely
+    smiles_str = str(smiles)
+    if len(smiles_str) <= max_length:
+        return smiles_str
+    return smiles_str[:max_length] + "..."
+
 
 class PropertyCalculator:
     """Service for calculating molecular properties from SMILES.
@@ -289,10 +312,11 @@ class PropertyCalculator:
         # Parse molecule
         mol = self._parse_molecule(smiles)
         if mol is None:
+            # Truncate SMILES in error message to prevent information disclosure
             return CalculationResult(
                 success=False,
                 smiles=smiles,
-                error=f"Invalid SMILES: {smiles}"
+                error=f"Invalid SMILES: {_truncate_smiles(smiles)}"
             )
 
         try:
@@ -360,7 +384,8 @@ class PropertyCalculator:
             )
 
         except Exception as e:
-            logger.error(f"Property calculation failed for {smiles}: {e}")
+            # Truncate SMILES in log message to prevent information disclosure
+            logger.error(f"Property calculation failed for {_truncate_smiles(smiles)}: {e}")
             return CalculationResult(
                 success=False,
                 smiles=smiles,

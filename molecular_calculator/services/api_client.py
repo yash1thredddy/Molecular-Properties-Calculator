@@ -74,8 +74,14 @@ class ChemicalAPIClient:
 
         Args:
             timeout: Request timeout in seconds (uses config default if None)
+                     Bounded between 1 and 120 seconds.
         """
-        self.timeout = timeout or config.API_TIMEOUT_SECONDS
+        default_timeout = config.API_TIMEOUT_SECONDS
+        if timeout is None:
+            self.timeout = default_timeout
+        else:
+            # Bound timeout between 1 and 120 seconds for security
+            self.timeout = min(max(timeout, 1), 120)
 
     def _retry_with_backoff(
         self,
@@ -162,6 +168,10 @@ class ChemicalAPIClient:
         Returns:
             APIResponse with result
         """
+        # Validate InChI Key format before URL construction (defense in depth)
+        if not inchi_key or sanitize_inchi_key(inchi_key) is None:
+            return APIResponse(success=False, error="Invalid InChI Key format")
+
         # URL-encode to prevent SSRF attacks
         url = self.NIH_CIR_URL.format(quote(inchi_key, safe=''))
         logger.debug(f"Querying NIH CIR for: {inchi_key}")
@@ -222,6 +232,10 @@ class ChemicalAPIClient:
         Returns:
             APIResponse with result
         """
+        # Validate InChI Key format before URL construction (defense in depth)
+        if not inchi_key or sanitize_inchi_key(inchi_key) is None:
+            return APIResponse(success=False, error="Invalid InChI Key format")
+
         # URL-encode to prevent SSRF attacks
         url = self.PUBCHEM_URL.format(quote(inchi_key, safe=''))
         logger.debug(f"Querying PubChem for: {inchi_key}")
