@@ -6,8 +6,11 @@ textColor = "#262730"
 
 [server]
 maxUploadSize = 200
-enableCORS = false
-enableXsrfProtection = false
+# Keep CSRF/CORS protection ON for deployed environments (this app takes file
+# uploads + interactive state). Dev-only disabling lives in .devcontainer's
+# launch command (for the Codespaces preview), not in the shipped config.
+enableCORS = true
+enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false

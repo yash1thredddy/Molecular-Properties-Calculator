@@ -115,20 +115,14 @@ def test_smarts_compilation():
         'FLUORESCENT': FLUORESCENT_SMARTS,
     }
 
-    failures = []
     for category, patterns in all_patterns.items():
         print(f"\n{category}:")
         for name, smarts in patterns.items():
             pattern = Chem.MolFromSmarts(smarts)
-            if pattern is None:
-                print(f"  FAIL: {name} - '{smarts}' does not compile!")
-                failures.append((category, name, smarts))
-            else:
-                print(f"  OK: {name}")
-
-    # Assert no compilation failures so pytest will fail the test
-    assert len(failures) == 0, f"SMARTS compilation failures: {failures}"
-    return failures
+            assert pattern is not None, (
+                f"SMARTS compilation failed for {category}/{name}: '{smarts}'"
+            )
+            print(f"  OK: {name}")
 
 
 def test_pattern_matching():
@@ -142,79 +136,74 @@ def test_pattern_matching():
     # Test thiol-reactive patterns
     print("\n--- THIOL-REACTIVE PATTERNS ---")
 
-    # Test user's molecule specifically
+    # Test user's molecule specifically - should match michael_acceptor and acrylamide
     user_mol = Chem.MolFromSmiles(TEST_MOLECULES['user_molecule'])
-    if user_mol:
-        print(f"\nUser's molecule (contains crotonamide NC(=O)/C=C/CC(C)C):")
-        for name, smarts in THIOL_REACTIVE_SMARTS.items():
-            pattern = Chem.MolFromSmarts(smarts)
-            if pattern:
-                matches = user_mol.HasSubstructMatch(pattern)
-                status = "MATCH" if matches else "no match"
-                print(f"  {name}: {status}")
+    assert user_mol is not None, "Failed to parse user_molecule SMILES"
+    michael_pattern = Chem.MolFromSmarts(THIOL_REACTIVE_SMARTS['michael_acceptor'])
+    acrylamide_pattern = Chem.MolFromSmarts(THIOL_REACTIVE_SMARTS['acrylamide'])
+    assert michael_pattern is not None, "Failed to compile michael_acceptor SMARTS"
+    assert acrylamide_pattern is not None, "Failed to compile acrylamide SMARTS"
+    assert user_mol.HasSubstructMatch(michael_pattern), (
+        "User's molecule should match michael_acceptor pattern"
+    )
+    assert user_mol.HasSubstructMatch(acrylamide_pattern), (
+        "User's molecule should match acrylamide pattern"
+    )
 
-    # Test simple acrylamide vs crotonamide
-    print(f"\nSimple acrylamide (C=CC(=O)N):")
+    # Test simple acrylamide - should match acrylamide pattern
     acrylamide_mol = Chem.MolFromSmiles('C=CC(=O)N')
-    for name, smarts in THIOL_REACTIVE_SMARTS.items():
-        pattern = Chem.MolFromSmarts(smarts)
-        if pattern and acrylamide_mol:
-            matches = acrylamide_mol.HasSubstructMatch(pattern)
-            if matches:
-                print(f"  {name}: MATCH")
+    assert acrylamide_mol is not None, "Failed to parse acrylamide SMILES"
+    assert acrylamide_mol.HasSubstructMatch(acrylamide_pattern), (
+        "Simple acrylamide should match acrylamide pattern"
+    )
 
-    print(f"\nCrotonamide (CC=CC(=O)N) - substituted:")
+    # Test crotonamide (substituted) - should also match acrylamide pattern
     crotonamide_mol = Chem.MolFromSmiles('CC=CC(=O)N')
-    for name, smarts in THIOL_REACTIVE_SMARTS.items():
-        pattern = Chem.MolFromSmarts(smarts)
-        if pattern and crotonamide_mol:
-            matches = crotonamide_mol.HasSubstructMatch(pattern)
-            if matches:
-                print(f"  {name}: MATCH")
+    assert crotonamide_mol is not None, "Failed to parse crotonamide SMILES"
+    assert crotonamide_mol.HasSubstructMatch(acrylamide_pattern), (
+        "Crotonamide (substituted) should match acrylamide pattern"
+    )
 
-    # Test negative controls
-    print(f"\nNegative control - acetamide (CC(=O)N - no C=C):")
+    # Test negative control - acetamide should NOT match any thiol-reactive pattern
     acetamide_mol = Chem.MolFromSmiles('CC(=O)N')
-    false_positives = []
+    assert acetamide_mol is not None, "Failed to parse acetamide SMILES"
     for name, smarts in THIOL_REACTIVE_SMARTS.items():
         pattern = Chem.MolFromSmarts(smarts)
-        if pattern and acetamide_mol:
-            matches = acetamide_mol.HasSubstructMatch(pattern)
-            if matches:
-                print(f"  FALSE POSITIVE: {name} matched!")
-                false_positives.append(name)
-    if not false_positives:
-        print(f"  OK: No false positives")
-    # Assert no false positives so pytest will fail the test
-    assert len(false_positives) == 0, f"Thiol-reactive false positives on acetamide: {false_positives}"
+        assert pattern is not None, f"Failed to compile pattern {name}"
+        assert not acetamide_mol.HasSubstructMatch(pattern), (
+            f"Acetamide (negative control) should NOT match thiol-reactive pattern '{name}'"
+        )
 
-    # Test redox patterns
+    # Test redox patterns - positive controls
     print("\n--- REDOX-ACTIVE PATTERNS ---")
-
-    for mol_name in ['benzoquinone', 'catechol', 'hydroquinone']:
+    redox_expected = {
+        'benzoquinone': 'para_quinone',
+        'catechol': 'catechol',
+        'hydroquinone': 'hydroquinone',
+    }
+    for mol_name, expected_pattern in redox_expected.items():
         mol = Chem.MolFromSmiles(TEST_MOLECULES[mol_name])
-        if mol:
-            print(f"\n{mol_name}:")
-            for name, smarts in REDOX_ACTIVE_SMARTS.items():
-                pattern = Chem.MolFromSmarts(smarts)
-                if pattern:
-                    matches = mol.HasSubstructMatch(pattern)
-                    if matches:
-                        print(f"  {name}: MATCH")
+        assert mol is not None, f"Failed to parse {mol_name} SMILES"
+        pattern = Chem.MolFromSmarts(REDOX_ACTIVE_SMARTS[expected_pattern])
+        assert pattern is not None, f"Failed to compile pattern {expected_pattern}"
+        assert mol.HasSubstructMatch(pattern), (
+            f"{mol_name} should match redox pattern '{expected_pattern}'"
+        )
 
-    # Test fluorescent patterns
+    # Test fluorescent patterns - positive controls
     print("\n--- FLUORESCENT PATTERNS ---")
-
-    for mol_name in ['coumarin', 'naphthalene', 'stilbene']:
+    fluor_expected = {
+        'naphthalene': 'naphthalene',
+        'stilbene': 'stilbene',
+    }
+    for mol_name, expected_pattern in fluor_expected.items():
         mol = Chem.MolFromSmiles(TEST_MOLECULES[mol_name])
-        if mol:
-            print(f"\n{mol_name}:")
-            for name, smarts in FLUORESCENT_SMARTS.items():
-                pattern = Chem.MolFromSmarts(smarts)
-                if pattern:
-                    matches = mol.HasSubstructMatch(pattern)
-                    if matches:
-                        print(f"  {name}: MATCH")
+        assert mol is not None, f"Failed to parse {mol_name} SMILES"
+        pattern = Chem.MolFromSmarts(FLUORESCENT_SMARTS[expected_pattern])
+        assert pattern is not None, f"Failed to compile pattern {expected_pattern}"
+        assert mol.HasSubstructMatch(pattern), (
+            f"{mol_name} should match fluorescent pattern '{expected_pattern}'"
+        )
 
 
 def main():
@@ -222,15 +211,9 @@ def main():
     print("SMARTS PATTERN VALIDATION FOR ASSAY INTERFERENCE DETECTION")
     print("=" * 70)
 
-    # Test compilation
-    failures = test_smarts_compilation()
-
-    if failures:
-        print(f"\n*** {len(failures)} SMARTS patterns failed to compile! ***")
-        for category, name, smarts in failures:
-            print(f"  {category}/{name}: {smarts}")
-    else:
-        print("\nAll SMARTS patterns compile successfully!")
+    # Test compilation (raises immediately on any failure via assertions)
+    test_smarts_compilation()
+    print("\nAll SMARTS patterns compile successfully!")
 
     # Test matching
     test_pattern_matching()

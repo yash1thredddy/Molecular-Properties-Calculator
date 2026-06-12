@@ -385,7 +385,7 @@ class PropertyCalculator:
 
         except Exception as e:
             # Truncate SMILES in log message to prevent information disclosure
-            logger.error(f"Property calculation failed for {_truncate_smiles(smiles)}: {e}")
+            logger.exception(f"Property calculation failed for {_truncate_smiles(smiles)}: {e}")
             return CalculationResult(
                 success=False,
                 smiles=smiles,

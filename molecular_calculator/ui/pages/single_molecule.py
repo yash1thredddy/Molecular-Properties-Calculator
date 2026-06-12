@@ -172,6 +172,8 @@ def _calculate_and_display_properties(
         st.error(f"❌ Calculation failed: {result.error}")
         return
 
+    # Coerce to set for safe intersection operations
+    selected_properties = set(selected_properties)
     # Check if any interference properties are selected
     interference_props = {'PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'}
     selected_interference = selected_properties & interference_props

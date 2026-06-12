@@ -18,6 +18,14 @@ from .molecule import (
 from .regression import ThreeDOLSRegression
 from .explanations import PropertyExplanations
 from .regression_3d import RegressionSummary, perform_3d_regression, suggest_best_3d_pairs
+from .gmm import (
+    GMMAnalysis,
+    PreparedData,
+    prepare_numeric_data,
+    best_fit_k,
+    bic_aic_sweep,
+    gmm_sentinel_check,
+)
 
 __all__ = [
     # Enums
@@ -34,6 +42,13 @@ __all__ = [
     "RegressionSummary",
     "perform_3d_regression",
     "suggest_best_3d_pairs",
+    # GMM
+    "GMMAnalysis",
+    "PreparedData",
+    "prepare_numeric_data",
+    "best_fit_k",
+    "bic_aic_sweep",
+    "gmm_sentinel_check",
     # Documentation
     "PropertyExplanations",
     # Constants

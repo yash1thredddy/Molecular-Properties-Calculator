@@ -31,6 +31,7 @@ from molecular_calculator.services.assay_interference import (
     check_redox_reactive,
     check_fluorescence_interference,
     calculate_interference_flags,
+    calculate_batch_interference_flags,
     get_interference_flags_from_smiles,
     get_interference_summary,
     get_all_filter_matches,
@@ -620,6 +621,27 @@ class TestEdgeCases(unittest.TestCase):
         mol = Chem.MolFromSmiles('[CH3]')
         flags = calculate_interference_flags(mol)
         self.assertIsInstance(flags, InterferenceFlags)
+
+
+class TestCalculateBatchInterferenceFlags(unittest.TestCase):
+    """Tests for the batch interference helper (service layer)."""
+
+    def test_missing_smiles_column_raises(self):
+        """A wrong/missing SMILES column must fail loudly, not silently return
+        all-zero flags (which would look like 'everything is clean')."""
+        import pandas as pd
+        df = pd.DataFrame({'structure': ['c1ccccc1', 'CCO']})
+        with self.assertRaises(ValueError):
+            calculate_batch_interference_flags(df, 'SMILES')
+
+    def test_valid_batch_adds_flag_columns_and_flags_quinone(self):
+        """Valid input adds the five flag columns and flags a known quinone as redox."""
+        import pandas as pd
+        df = pd.DataFrame({'SMILES': ['CC(=O)OC1=CC=CC=C1C(=O)O', 'O=C1C=CC(=O)C=C1']})
+        out = calculate_batch_interference_flags(df, 'SMILES')
+        for col in ('PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol'):
+            self.assertIn(col, out.columns)
+        self.assertEqual(int(out.loc[1, 'Redox']), 1)
 
 
 if __name__ == '__main__':

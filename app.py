@@ -38,6 +38,7 @@ from molecular_calculator.ui.pages import (
     render_batch_processing_page,
     render_3d_regression_page,
     render_3d_regression_help,
+    render_gmm_page,
 )
 
 
@@ -77,6 +78,7 @@ def main():
         - Batch processing for CSV/Excel files
         - Interactive data visualization with multiple chart types
         - 3D OLS regression analysis for structure-activity relationships
+        - Gaussian Mixture Model (GMM) grouping with plain-language results
 
         **Developed by:** Yashwanth Reddy for ITR-UIC
         """)
@@ -100,6 +102,9 @@ def main():
     elif input_mode == "3D Regression Analysis":
         render_3d_regression_page()
 
+    elif input_mode == "GMM Analysis":
+        render_gmm_page()
+
     # Footer
     _render_footer()
 
@@ -115,7 +120,8 @@ def _render_sidebar():
             "Single Molecule",
             "Batch Processing",
             "Data Visualization",
-            "3D Regression Analysis"
+            "3D Regression Analysis",
+            "GMM Analysis"
         ],
         key="input_mode"
     )

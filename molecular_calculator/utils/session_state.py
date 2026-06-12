@@ -113,6 +113,17 @@ class SessionState:
             'viz_data',
             'viz_config',
         ],
+        'gmm': [
+            'gmm_working_df',
+            'gmm_analysis',
+            'gmm_kept_index',
+            'gmm_prepared',
+            'gmm_props_df',
+            'gmm_run_params',
+            'gmm_selected_cols',
+            'gmm_n_slider',
+            'gmm_seed',
+        ],
     }
 
     @classmethod

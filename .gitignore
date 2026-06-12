@@ -140,6 +140,11 @@ CLAUDE.md
 
 docs/
 
+# Internal reference docs (kept local, not in public repo)
+ASSAY_INTERFERENCE_GUIDE.md
+Tests/TEST_REPORT.md
+Tests/API_VERIFICATION_STATUS.md
+
 # Test/debug files
 test_smilesdrawer_version.html
 nul

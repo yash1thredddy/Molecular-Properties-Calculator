@@ -75,6 +75,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple
 
+import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import FilterCatalog, rdMolDescriptors, Descriptors
 
@@ -812,6 +813,70 @@ def get_interference_flags_from_smiles(smiles: str) -> InterferenceFlags:
     except Exception as e:
         logger.error(f"Error processing SMILES '{smiles}': {e}")
         return InterferenceFlags()
+
+
+def calculate_batch_interference_flags(
+    df: pd.DataFrame,
+    smiles_column: str,
+    include_details: bool = True
+) -> pd.DataFrame:
+    """
+    Calculate interference flags for all compounds in a DataFrame.
+
+    Args:
+        df: DataFrame with SMILES column
+        smiles_column: Name of the column containing SMILES
+        include_details: Whether to include detail columns (pattern names)
+
+    Returns:
+        DataFrame with added interference flag columns and optional detail columns
+    """
+    # Fail loudly on a bad column name rather than silently producing all-zero
+    # flags (which would read as "every compound is clean").
+    if smiles_column not in df.columns:
+        raise ValueError(f"Column '{smiles_column}' not found in DataFrame")
+
+    result_df = df.copy()
+
+    # Initialize flag columns
+    flag_columns = ['PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol']
+    for col in flag_columns:
+        result_df[col] = 0
+
+    # Initialize detail columns if requested
+    if include_details:
+        detail_columns = [
+            'PAINS_Details', 'Aggregator_Details', 'Redox_Details',
+            'Fluorescence_Details', 'Thiol_Details'
+        ]
+        for col in detail_columns:
+            result_df[col] = ''
+
+    # Calculate flags for each compound
+    for idx, row in result_df.iterrows():
+        smiles = row[smiles_column]
+        if pd.notna(smiles) and str(smiles).strip():
+            flags = get_interference_flags_from_smiles(str(smiles))
+            result_df.at[idx, 'PAINS'] = 1 if flags.pains else 0
+            result_df.at[idx, 'Aggregator'] = 1 if flags.aggregator else 0
+            result_df.at[idx, 'Redox'] = 1 if flags.redox else 0
+            result_df.at[idx, 'Fluorescence'] = 1 if flags.fluorescence else 0
+            result_df.at[idx, 'Thiol'] = 1 if flags.thiol else 0
+
+            # Store details if requested
+            if include_details:
+                if flags.pains and flags.pains_details:
+                    result_df.at[idx, 'PAINS_Details'] = ', '.join(flags.pains_details)
+                if flags.aggregator and flags.aggregator_reason:
+                    result_df.at[idx, 'Aggregator_Details'] = flags.aggregator_reason
+                if flags.redox and flags.redox_groups:
+                    result_df.at[idx, 'Redox_Details'] = ', '.join(flags.redox_groups)
+                if flags.fluorescence and flags.fluorescence_scaffolds:
+                    result_df.at[idx, 'Fluorescence_Details'] = ', '.join(flags.fluorescence_scaffolds)
+                if flags.thiol and flags.thiol_electrophiles:
+                    result_df.at[idx, 'Thiol_Details'] = ', '.join(flags.thiol_electrophiles)
+
+    return result_df
 
 
 def get_interference_summary(flags: InterferenceFlags) -> Dict[str, Any]:
