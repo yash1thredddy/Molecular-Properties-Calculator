@@ -207,7 +207,7 @@ class RegressionSummary:
         summary.append(f"No. Observations:        {self.model.n:>16d}   AIC:                 {self.aic:>10.3f}")
         summary.append(f"Df Residuals:            {self.df_residuals:>16d}   BIC:                 {self.bic:>10.3f}")
         summary.append(f"Df Model:                {self.df_model:>16d}")
-        summary.append(f"Covariance Type:            nonrobust")
+        summary.append("Covariance Type:            nonrobust")
         summary.append("=" * 78)
 
         # Coefficient table
@@ -375,7 +375,6 @@ def _evaluate_3d_pair(
             'reason': 'singular_matrix'
         }
     beta = XTX_inv @ (XT @ z)
-    b0, b1, b2 = beta.tolist()
 
     # Fitted and residuals
     zhat = X @ beta

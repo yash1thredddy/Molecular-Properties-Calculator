@@ -173,7 +173,7 @@ The entry point is `app.py`. If you're contributing or extending the calculator,
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - RDKit for cheminformatics calculations
 - Streamlit for the web interface
 - See `requirements.txt` for full list

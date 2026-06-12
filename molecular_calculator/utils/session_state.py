@@ -121,7 +121,7 @@ class SessionState:
             'gmm_props_df',
             'gmm_run_params',
             'gmm_selected_cols',
-            'gmm_n_components',
+            'gmm_n_slider',
             'gmm_seed',
         ],
     }

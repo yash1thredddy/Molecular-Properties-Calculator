@@ -141,6 +141,8 @@ def test_pattern_matching():
     assert user_mol is not None, "Failed to parse user_molecule SMILES"
     michael_pattern = Chem.MolFromSmarts(THIOL_REACTIVE_SMARTS['michael_acceptor'])
     acrylamide_pattern = Chem.MolFromSmarts(THIOL_REACTIVE_SMARTS['acrylamide'])
+    assert michael_pattern is not None, "Failed to compile michael_acceptor SMARTS"
+    assert acrylamide_pattern is not None, "Failed to compile acrylamide SMARTS"
     assert user_mol.HasSubstructMatch(michael_pattern), (
         "User's molecule should match michael_acceptor pattern"
     )
@@ -209,15 +211,9 @@ def main():
     print("SMARTS PATTERN VALIDATION FOR ASSAY INTERFERENCE DETECTION")
     print("=" * 70)
 
-    # Test compilation
-    failures = test_smarts_compilation()
-
-    if failures:
-        print(f"\n*** {len(failures)} SMARTS patterns failed to compile! ***")
-        for category, name, smarts in failures:
-            print(f"  {category}/{name}: {smarts}")
-    else:
-        print("\nAll SMARTS patterns compile successfully!")
+    # Test compilation (raises immediately on any failure via assertions)
+    test_smarts_compilation()
+    print("\nAll SMARTS patterns compile successfully!")
 
     # Test matching
     test_pattern_matching()

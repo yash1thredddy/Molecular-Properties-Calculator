@@ -13,7 +13,6 @@ from molecular_calculator.services.assay_interference import (
     InterferenceFlags,
     FLAG_DESCRIPTIONS,
     METHODOLOGY_REFERENCES,
-    get_interference_flags_from_smiles,
     get_methodology_citation,
 )
 
@@ -82,45 +81,6 @@ def render_methodology_references() -> None:
 
         for name, ref in METHODOLOGY_REFERENCES.items():
             st.markdown(f"- {ref['citation']} DOI: [{ref['doi']}]({ref['url']})")
-
-
-def render_flag_metric(
-    flag_name: str,
-    count: int,
-    total: int,
-    is_flagged: bool = False
-) -> None:
-    """
-    Render a single flag metric with status indicator.
-
-    Args:
-        flag_name: Name of the flag (PAINS, Aggregator, etc.)
-        count: Number of compounds with this flag
-        total: Total number of compounds
-        is_flagged: Whether this flag is raised (for single molecule)
-    """
-    flag_info = FLAG_DESCRIPTIONS.get(flag_name, {})
-    full_name = flag_info.get('full_name', flag_name)
-    description = flag_info.get('description', '')
-
-    # Calculate percentage
-    percentage = (count / total * 100) if total > 0 else 0
-
-    # Determine status using native Streamlit (no unsafe_allow_html)
-    if count == 0:
-        delta_text = "Clean"
-        delta_color = "off"  # Gray/neutral
-    else:
-        delta_text = f"{percentage:.0f}%"
-        delta_color = "inverse"  # Red for flagged
-
-    # Render metric using native st.metric (secure, no HTML injection risk)
-    st.metric(
-        label=flag_name,
-        value=count,
-        delta=delta_text,
-        delta_color=delta_color
-    )
 
 
 def render_interference_metrics(flags: InterferenceFlags) -> None:
@@ -492,60 +452,6 @@ def render_interference_section(
         render_methodology_references()
 
 
-def calculate_batch_interference_flags(
-    df: pd.DataFrame,
-    smiles_column: str,
-    include_details: bool = True
-) -> pd.DataFrame:
-    """
-    Calculate interference flags for all compounds in a DataFrame.
-
-    Args:
-        df: DataFrame with SMILES column
-        smiles_column: Name of the column containing SMILES
-        include_details: Whether to include detail columns (pattern names)
-
-    Returns:
-        DataFrame with added interference flag columns and optional detail columns
-    """
-    result_df = df.copy()
-
-    # Initialize flag columns
-    flag_columns = ['PAINS', 'Aggregator', 'Redox', 'Fluorescence', 'Thiol']
-    for col in flag_columns:
-        result_df[col] = 0
-
-    # Initialize detail columns if requested
-    if include_details:
-        detail_columns = [
-            'PAINS_Details', 'Aggregator_Details', 'Redox_Details',
-            'Fluorescence_Details', 'Thiol_Details'
-        ]
-        for col in detail_columns:
-            result_df[col] = ''
-
-    # Calculate flags for each compound
-    for idx, row in result_df.iterrows():
-        smiles = row.get(smiles_column, '')
-        if smiles and pd.notna(smiles):
-            flags = get_interference_flags_from_smiles(str(smiles))
-            result_df.at[idx, 'PAINS'] = 1 if flags.pains else 0
-            result_df.at[idx, 'Aggregator'] = 1 if flags.aggregator else 0
-            result_df.at[idx, 'Redox'] = 1 if flags.redox else 0
-            result_df.at[idx, 'Fluorescence'] = 1 if flags.fluorescence else 0
-            result_df.at[idx, 'Thiol'] = 1 if flags.thiol else 0
-
-            # Store details if requested
-            if include_details:
-                if flags.pains and flags.pains_details:
-                    result_df.at[idx, 'PAINS_Details'] = ', '.join(flags.pains_details)
-                if flags.aggregator and flags.aggregator_reason:
-                    result_df.at[idx, 'Aggregator_Details'] = flags.aggregator_reason
-                if flags.redox and flags.redox_groups:
-                    result_df.at[idx, 'Redox_Details'] = ', '.join(flags.redox_groups)
-                if flags.fluorescence and flags.fluorescence_scaffolds:
-                    result_df.at[idx, 'Fluorescence_Details'] = ', '.join(flags.fluorescence_scaffolds)
-                if flags.thiol and flags.thiol_electrophiles:
-                    result_df.at[idx, 'Thiol_Details'] = ', '.join(flags.thiol_electrophiles)
-
-    return result_df
+### `calculate_batch_interference_flags` moved to
+### `molecular_calculator.services.assay_interference` (business logic belongs in
+### the service layer, not the UI layer). Import it from there.

@@ -25,6 +25,7 @@ from .ligand_efficiency import (
 from .assay_interference import (
     InterferenceFlags,
     calculate_interference_flags,
+    calculate_batch_interference_flags,
     get_interference_flags_from_smiles,
     get_interference_summary,
     FLAG_DESCRIPTIONS,
@@ -48,6 +49,7 @@ __all__ = [
     # Assay Interference
     "InterferenceFlags",
     "calculate_interference_flags",
+    "calculate_batch_interference_flags",
     "get_interference_flags_from_smiles",
     "get_interference_summary",
     "FLAG_DESCRIPTIONS",

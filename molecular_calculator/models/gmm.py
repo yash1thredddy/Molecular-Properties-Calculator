@@ -141,7 +141,7 @@ def _scale(values: np.ndarray, standardize: bool):
 
 def best_fit_k(values, *, k_min: int = MIN_COMPONENTS, k_max: int = MAX_COMPONENTS,
                random_state: int = DEFAULT_RANDOM_STATE, standardize: bool = True) -> int:
-    """Return the K in [k_min, k_max] minimizing BIC. Falls back to DEFAULT_COMPONENTS.
+    """Return the K in [k_min, k_max] minimizing BIC. Falls back to DEFAULT_COMPONENTS clamped into [k_min, k_max].
 
     Ported from Impulator's ``best_fit_k`` and generalized to N-D. Skips
     non-converged fits. All candidates share the same seed and covariance type
@@ -166,7 +166,7 @@ def best_fit_k(values, *, k_min: int = MIN_COMPONENTS, k_max: int = MAX_COMPONEN
         except Exception as exc:  # singular covariance etc. — skip this K
             logger.debug("best_fit_k: K=%d skipped (%s)", k, exc)
             continue
-    return best_k if best_k is not None else DEFAULT_COMPONENTS
+    return best_k if best_k is not None else min(max(DEFAULT_COMPONENTS, int(k_min)), int(k_max))
 
 
 def bic_aic_sweep(values, *, k_min: int = 1, k_max: int = 10,
@@ -274,8 +274,10 @@ class GMMAnalysis:
 
         Single-property only. Returns (means, weights, sigmas, pdfs) where
         ``pdfs[k] = weights[k] * norm.pdf(x_grid, means[k], sigmas[k])``. Ported
-        directly from Impulator's ``component_curves``. Single-property mode does
-        not standardize, so means/sigmas are already in real units.
+        directly from Impulator's ``component_curves``. ``x_grid`` is in the
+        caller's real (un-standardized) units, so when this analysis was fit with
+        ``standardize=True`` the model's z-space means/sigmas are converted back
+        to real units before building the PDFs.
         """
         if self.n_features != 1:
             raise ValueError("component_curves is only defined for single-property (1-D) analyses")
@@ -286,6 +288,11 @@ class GMMAnalysis:
         # [:, 0, 0] is self-documenting and fails loudly if a multi-feature array
         # is ever passed here by mistake.
         sigmas = np.sqrt(self.model.covariances_[:, 0, 0])[order]
+        if self.scaler is not None:
+            # Model was fit in standardized space; map means/sigmas back to the
+            # real units of x_grid so the overlaid Gaussians line up with the data.
+            means = self.scaler.inverse_transform(means.reshape(-1, 1)).flatten()
+            sigmas = sigmas * float(self.scaler.scale_[0])
         x = np.asarray(x_grid, dtype=float)
         pdfs = np.vstack([
             weights[k] * norm.pdf(x, means[k], sigmas[k]) for k in range(len(means))

@@ -27,32 +27,33 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors
 
 
+# Column aliases for flexible, case-insensitive column detection.
+COLUMN_ALIASES = {
+    'pki': ['pKi', 'pki', 'PKI', 'pIC50', 'pic50', 'p_Ki', 'p_ki'],
+    'mw': ['MW', 'mw', 'Molecular_Weight', 'molecular_weight', 'MolWt', 'mol_wt'],
+    'tpsa': ['TPSA', 'tpsa', 'PSA', 'psa', 'Polar_Surface_Area', 'polar_surface_area'],
+    'heavy_atoms': ['Heavy_Atom_Count', 'heavy_atoms', 'HeavyAtomCount', 'nHeavy', 'n_heavy', 'HeavyAtoms'],
+    'smiles': ['SMILES', 'smiles', 'Smiles', 'smi', 'SMI', 'canonical_smiles', 'CANONICAL_SMILES']
+}
+
+# Required dependencies for each Ligand Efficiency Index.
+LEI_DEPENDENCIES = {
+    'NSEI': ['pki', 'polar_atoms'],
+    'NBEI': ['pki', 'heavy_atoms'],
+    'BEI': ['pki', 'mw'],
+    'SEI': ['pki', 'tpsa'],
+    'nBEI': ['pki', 'heavy_atoms'],
+    'mBEI': ['pki', 'mw'],
+    'LEH': ['pki', 'heavy_atoms'],
+    'LEP': ['pki', 'polar_atoms']
+}
+
+
 class DependencyChecker:
     """
     Intelligent dependency checker for LEI calculations.
     Detects existing columns and determines what needs to be calculated.
     """
-
-    # Define column aliases for flexible detection
-    COLUMN_ALIASES = {
-        'pki': ['pKi', 'pki', 'PKI', 'pIC50', 'pic50', 'p_Ki', 'p_ki'],
-        'mw': ['MW', 'mw', 'Molecular_Weight', 'molecular_weight', 'MolWt', 'mol_wt'],
-        'tpsa': ['TPSA', 'tpsa', 'PSA', 'psa', 'Polar_Surface_Area', 'polar_surface_area'],
-        'heavy_atoms': ['Heavy_Atom_Count', 'heavy_atoms', 'HeavyAtomCount', 'nHeavy', 'n_heavy', 'HeavyAtoms'],
-        'smiles': ['SMILES', 'smiles', 'Smiles', 'smi', 'SMI', 'canonical_smiles', 'CANONICAL_SMILES']
-    }
-
-    # Define dependencies for each LEI
-    LEI_DEPENDENCIES = {
-        'NSEI': ['pki', 'polar_atoms'],
-        'NBEI': ['pki', 'heavy_atoms'],
-        'BEI': ['pki', 'mw'],
-        'SEI': ['pki', 'tpsa'],
-        'nBEI': ['pki', 'heavy_atoms'],
-        'mBEI': ['pki', 'mw'],
-        'LEH': ['pki', 'heavy_atoms'],
-        'LEP': ['pki', 'polar_atoms']
-    }
 
     @staticmethod
     def detect_column(df: pd.DataFrame, standard_name: str) -> Optional[str]:
@@ -66,10 +67,10 @@ class DependencyChecker:
         Returns:
             Actual column name if found, None otherwise
         """
-        if standard_name not in DependencyChecker.COLUMN_ALIASES:
+        if standard_name not in COLUMN_ALIASES:
             return None
 
-        aliases = DependencyChecker.COLUMN_ALIASES[standard_name]
+        aliases = COLUMN_ALIASES[standard_name]
 
         for col in df.columns:
             if col in aliases or col.lower() in [alias.lower() for alias in aliases]:
@@ -89,7 +90,7 @@ class DependencyChecker:
             e.g., {'pki': 'pKi', 'mw': 'Molecular_Weight', 'smiles': 'SMILES'}
         """
         detected = {}
-        for standard_name in DependencyChecker.COLUMN_ALIASES.keys():
+        for standard_name in COLUMN_ALIASES.keys():
             detected[standard_name] = DependencyChecker.detect_column(df, standard_name)
         return detected
 
@@ -145,10 +146,10 @@ class DependencyChecker:
 
         # Check each selected LEI
         for lei in selected_leis:
-            if lei not in DependencyChecker.LEI_DEPENDENCIES:
+            if lei not in LEI_DEPENDENCIES:
                 continue
 
-            required_deps = DependencyChecker.LEI_DEPENDENCIES[lei]
+            required_deps = LEI_DEPENDENCIES[lei]
             lei_status = {
                 'required': required_deps,
                 'available': [],
@@ -212,7 +213,7 @@ class DependencyChecker:
 
         # Show what needs to be calculated
         if needs_calc:
-            messages.append(f"\n🔧 **Will Calculate from SMILES:**")
+            messages.append("\n🔧 **Will Calculate from SMILES:**")
             for dep in needs_calc:
                 messages.append(f"  → {dep.replace('_', ' ').title()}")
 
@@ -518,7 +519,7 @@ class LigandEfficiencyCalculator:
 
         # Calculate LEIs for each row
         lei_results = []
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
             lei_values = LigandEfficiencyCalculator.calculate_lei_from_row(
                 row=row,
                 detected_columns=detected_columns,

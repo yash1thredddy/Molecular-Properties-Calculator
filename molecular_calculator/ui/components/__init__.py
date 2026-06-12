@@ -93,7 +93,6 @@ from .interference_display import (
     render_flag_summary_table,
     render_flagged_compounds_table,
     render_interference_section,
-    calculate_batch_interference_flags,
 )
 
 __all__ = [
@@ -169,5 +168,4 @@ __all__ = [
     "render_flag_summary_table",
     "render_flagged_compounds_table",
     "render_interference_section",
-    "calculate_batch_interference_flags",
 ]

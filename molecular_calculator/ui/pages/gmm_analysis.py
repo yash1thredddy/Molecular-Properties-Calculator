@@ -84,6 +84,15 @@ def render_gmm_page() -> None:
     if "gmm_seed" not in st.session_state:
         st.session_state["gmm_seed"] = DEFAULT_RANDOM_STATE
 
+    # Drop any previously-chosen log-transform columns that are no longer in the
+    # current selection. Otherwise the keyed multiselect below (and this
+    # prepare_numeric_data call) would receive stale values absent from its
+    # options, which Streamlit rejects with an exception.
+    if "gmm_log_cols" in st.session_state:
+        st.session_state["gmm_log_cols"] = [
+            c for c in st.session_state["gmm_log_cols"] if c in selected_cols
+        ]
+
     prepared = prepare_numeric_data(
         df, selected_cols,
         log_transform_cols=st.session_state.get("gmm_log_cols", []),
@@ -333,7 +342,7 @@ def _render_results_if_available(df):
     run_params = SessionState.get("gmm_run_params", {})
     seed = int(run_params.get("seed", DEFAULT_RANDOM_STATE))
     standardize = bool(run_params.get("standardize", analysis.scaler is not None))
-    sweep = _cached_bic_aic_sweep(prepared.values, 1, 10, seed, standardize)
+    sweep = _cached_bic_aic_sweep(prepared.values, MIN_COMPONENTS, MAX_COMPONENTS, seed, standardize)
     if not sweep.empty:
         st.markdown("**Model quality (how many groups?)**")
         st.plotly_chart(
