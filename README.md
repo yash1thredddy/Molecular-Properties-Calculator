@@ -38,9 +38,10 @@ Drop in a molecule (or thousands of them), pick the properties you need, and get
 - Bertz Complexity, Chi Connectivity Indices
 - Crippen descriptors, Labute ASA
 
-**Ligand Efficiency**
-- LE, LLE, LELP, SILE, and other efficiency metrics
-- Requires activity data (pIC50, pKi, etc.)
+**Ligand Efficiency Indices (LEI)**
+- 8 indices based on AtlasCBS methodology: NSEI, NBEI, BEI, SEI, nBEI, mBEI, LEH, LEP
+- Requires activity data (pKi or pIC50)
+- Auto-detects existing columns (MW, TPSA, heavy atoms) to avoid redundant calculations
 
 ## Getting Started
 
@@ -87,6 +88,10 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C
 
 The app includes a 3D OLS regression tool for exploring relationships between molecular properties. Pick any three numeric properties as X, Y, and Z axes, and fit a regression plane through your data. Useful for SAR analysis and property optimization studies.
 
+## GMM Analysis
+
+The app can group molecules by clustering on one or more numeric properties using a Gaussian Mixture Model. Two modes are available: single-property density overlay (visualizes how a property distributes across discovered groups) and multi-property clustering (assigns each molecule to a group based on several properties at once). The number of groups is chosen automatically via BIC, so no manual tuning is needed. Results are explained in plain language and the labeled dataset can be exported as a CSV.
+
 ## Visualization
 
 Interactive charts built with Plotly:
@@ -107,6 +112,20 @@ Interactive charts built with Plotly:
 - TPSA ≤ 140 Å²
 - Rotatable Bonds ≤ 10
 
+## Assay Interference Detection
+
+Screens compounds for known assay interference mechanisms across five categories:
+
+| Flag | What It Catches | How |
+|------|----------------|-----|
+| **PAINS** | Pan-assay interference substructures | RDKit FilterCatalog (480 published SMARTS patterns from Baell & Holloway 2010) |
+| **Aggregator** | Colloidal aggregation risk | Shoichet Lab heuristics (cLogP, MW, aromatic ring thresholds) |
+| **Thiol-reactive** | Electrophilic compounds that react with cysteine residues | 14 SMARTS patterns for Michael acceptors, acylating agents, SN2 electrophiles |
+| **Redox-active** | Redox cycling compounds (quinones, catechols, etc.) | 10 SMARTS patterns for redox-active functional groups |
+| **Autofluorescent** | Fluorophore scaffolds that interfere with fluorescence assays | 13 SMARTS patterns for coumarins, xanthenes, anthracenes, stilbenes, etc. |
+
+These are **flags for human review**, not automatic exclusions. A PAINS hit doesn't mean the compound is bad -- it means you should look more carefully at your assay data. Each flag includes the matched pattern name and a risk level so you can prioritize your review.
+
 ## Technical Notes
 
 **InChI Key Conversion**
@@ -122,6 +141,19 @@ Interactive charts built with Plotly:
 **Compatibility**
 - Output works with StarDrop, Pipeline Pilot, KNIME, and other cheminformatics tools
 - Clean numeric values, no problematic text columns
+
+## Architecture
+
+The codebase uses a modular package structure under `molecular_calculator/`:
+
+- **`core/`** -- Core calculation engine (property computation, SMILES handling)
+- **`services/`** -- Business logic (assay interference detection, ligand efficiency, API clients)
+- **`models/`** -- Data models, regression, and property explanations
+- **`ui/`** -- Streamlit pages and reusable UI components (charts, viewers, file uploaders)
+- **`utils/`** -- Shared utilities (validation, caching, error handling, rate limiting)
+- **`config/`** -- App settings and logging configuration
+
+The entry point is `app.py`. If you're contributing or extending the calculator, this is the layout you'll be working with.
 
 ## Requirements
 

@@ -35,14 +35,18 @@ class TestSanitizer:
         assert sanitize_smiles(None) is None
         assert sanitize_smiles(123) is None
 
-    def test_sanitize_smiles_removes_invalid_chars(self):
-        """Test that invalid characters are removed."""
+    def test_sanitize_smiles_rejects_invalid_chars(self):
+        """Invalid characters cause rejection (None), not silent stripping.
+
+        sanitize_smiles deliberately returns None when a SMILES contains characters
+        outside VALID_SMILES_CHARS instead of stripping them, so injected/corrupted
+        input (e.g. "CCO<script>") never flows downstream as a "cleaned" string.
+        ConversionService relies on this None as its invalid-input signal.
+        """
         from molecular_calculator.utils.sanitizer import sanitize_smiles
 
-        # Invalid chars should be stripped
-        result = sanitize_smiles("CCO<script>")
-        assert "<" not in result
-        assert ">" not in result
+        # '<' and '>' are not valid SMILES characters -> reject, don't strip.
+        assert sanitize_smiles("CCO<script>") is None
 
     def test_is_valid_smiles_format(self):
         """Test SMILES format validation."""
@@ -150,9 +154,9 @@ class TestCache:
         # Verify value is accessible
         assert cache.get("key1") == "value1"
 
-        # Mock time.time() to simulate expiration
-        # The cache stores entry time and checks if (current_time - entry_time) > ttl
-        with patch('time.time') as mock_time:
+        # Mock the cache module's time.time() to simulate expiration
+        # Patch the specific module reference so TTLCache._is_expired sees the mock
+        with patch('molecular_calculator.utils.cache.time.time') as mock_time:
             # Set time to 61 seconds after cache was set (beyond TTL)
             mock_time.return_value = base_time + 61
             assert cache.get("key1") is None, "Cache entry should expire after TTL"
@@ -168,12 +172,12 @@ class TestCache:
         cache.set("key1", "value1")
 
         # Before expiration
-        with patch('time.time') as mock_time:
+        with patch('molecular_calculator.utils.cache.time.time') as mock_time:
             mock_time.return_value = base_time + 9  # Just before TTL
             assert cache.get("key1") == "value1", "Cache should still be valid before TTL"
 
         # Right at expiration
-        with patch('time.time') as mock_time:
+        with patch('molecular_calculator.utils.cache.time.time') as mock_time:
             mock_time.return_value = base_time + 11  # Just after TTL
             assert cache.get("key1") is None, "Cache should expire after TTL"
 
