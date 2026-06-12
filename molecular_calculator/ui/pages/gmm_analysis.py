@@ -48,6 +48,21 @@ def render_gmm_page() -> None:
     df = _maybe_calculate_properties(df)
     SessionState.set("gmm_working_df", df)
 
+    # Formula builder: let users add computed columns before the column selector.
+    from molecular_calculator.ui.components.formula_builder import render_formula_builder, _schema_hash
+    _prev_hash = st.session_state.get("gmm_formula_schema_hash")
+    df = render_formula_builder(df, page_key="gmm")
+    _new_hash = _schema_hash(df)
+    if _prev_hash is not None and _new_hash != _prev_hash:
+        for k in ("gmm_analysis", "gmm_kept_index", "gmm_prepared", "gmm_run_params"):
+            st.session_state.pop(k, None)
+        # prune stale log/axis selections that reference removed columns
+        valid = set(df.columns)
+        if "gmm_log_cols" in st.session_state:
+            st.session_state["gmm_log_cols"] = [
+                c for c in st.session_state["gmm_log_cols"] if c in valid]
+    st.session_state["gmm_formula_schema_hash"] = _new_hash
+
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if len(numeric_cols) < 1:
         st.warning("No numeric columns found. Upload data with numeric values, or "
@@ -217,7 +232,7 @@ def _maybe_calculate_properties(df):
         )
         if st.button("Calculate properties", key="gmm_calc_props"):
             props = ["Molecular_Weight", "LogP", "TPSA", "HB_Donors", "HB_Acceptors",
-                     "Rotatable_Bonds", "Aromatic_Rings", "QED"]
+                     "Rotatable_Bonds", "Aromatic_Rings", "QED", "10xPSA_MW", "NPOLoNHA"]
             # Reuse the core facade's public, UI-free batch API rather than the batch
             # page's private helper. Parallel for larger files, sequential below.
             batch_fn = (

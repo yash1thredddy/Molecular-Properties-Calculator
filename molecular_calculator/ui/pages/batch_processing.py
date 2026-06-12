@@ -137,6 +137,18 @@ def render_batch_processing_page(
         # Use stored column names to ensure consistency across reruns
         stored_smiles_col = SessionState.get('batch_results_smiles_col', smiles_col)
         stored_name_col = SessionState.get('batch_results_name_col', name_col)
+
+        # Formula builder: let users add computed columns before display/export.
+        from molecular_calculator.ui.components.formula_builder import render_formula_builder
+        _before_formula_cols = set(results_df.columns)
+        results_df = render_formula_builder(results_df, page_key="batch")
+        SessionState.set('batch_results_df', results_df)
+        new_formula_cols = [c for c in results_df.columns if c not in _before_formula_cols]
+        if new_formula_cols:
+            existing = set(SessionState.get('batch_calculated_columns', set()))
+            SessionState.set('batch_calculated_columns', existing.union(new_formula_cols))
+            calculated_columns = SessionState.get('batch_calculated_columns', set())
+
         _display_batch_results(results_df, calculated_columns, stored_smiles_col, stored_name_col)
 
 

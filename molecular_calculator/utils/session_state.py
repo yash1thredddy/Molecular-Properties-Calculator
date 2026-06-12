@@ -104,6 +104,10 @@ class SessionState:
             'current_smiles_col',
             'uploaded_file_hash',
             'selected_properties',
+            # Formula-builder keys (cleared on file change)
+            'batch_formula_defs',
+            'batch_formula_columns',
+            'batch_formula_schema_hash',
         ],
         'single': [
             'single_molecule_result',
@@ -112,6 +116,10 @@ class SessionState:
         'visualization': [
             'viz_data',
             'viz_config',
+            # Formula-builder keys (cleared on file change)
+            'viz_formula_defs',
+            'viz_formula_columns',
+            'viz_formula_schema_hash',
         ],
         'gmm': [
             'gmm_working_df',
@@ -123,6 +131,10 @@ class SessionState:
             'gmm_selected_cols',
             'gmm_n_slider',
             'gmm_seed',
+            # Formula-builder keys (cleared on file change)
+            'gmm_formula_defs',
+            'gmm_formula_columns',
+            'gmm_formula_schema_hash',
         ],
     }
 

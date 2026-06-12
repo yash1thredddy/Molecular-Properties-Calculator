@@ -260,6 +260,10 @@ def render_interactive_visualization(
         smiles_col: Optional SMILES column for structure viewer integration
         name_col: Optional name/ID column for display
     """
+    # Formula builder: let users add computed columns before axis/encoding selectors.
+    from molecular_calculator.ui.components.formula_builder import render_formula_builder
+    df = render_formula_builder(df, page_key=key_prefix)
+
     # Get column types
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     all_cols = df.columns.tolist()
