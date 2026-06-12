@@ -312,14 +312,14 @@ def _render_results_if_available(df):
             else selected_cols[0]
         )
         fig = create_density_overlay(prepared.values[:, 0], analysis, density_label)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     elif x_name in selected_cols and y_name in selected_cols:
         xi = selected_cols.index(x_name)
         yi = selected_cols.index(y_name)
         xlabel = f"log({x_name})" if x_name in prepared.logged_columns else x_name
         ylabel = f"log({y_name})" if y_name in prepared.logged_columns else y_name
         fig = create_cluster_scatter(analysis, xi, yi, xlabel, ylabel)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Column selection changed since the last run — click ▶ Run GMM "
                 "analysis to refresh the chart.")
@@ -335,7 +335,7 @@ def _render_results_if_available(df):
         st.markdown("**Model quality (how many groups?)**")
         st.plotly_chart(
             create_bic_aic_plot(sweep, recommended_k=analysis.n_components),
-            use_container_width=True,
+            width="stretch",
         )
 
     # 5. Confidence & outliers.
