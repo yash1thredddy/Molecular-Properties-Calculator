@@ -6,6 +6,10 @@ textColor = "#262730"
 
 [server]
 maxUploadSize = 200
+# Disable the source file watcher in deployment. It's only needed for local
+# hot-reload, and on Streamlit Cloud it can race with the package import and pop
+# a module from sys.modules mid-import (KeyError: '...utils.session_state').
+fileWatcherType = "none"
 # Keep CSRF/CORS protection ON for deployed environments (this app takes file
 # uploads + interactive state). Dev-only disabling lives in .devcontainer's
 # launch command (for the Codespaces preview), not in the shipped config.
