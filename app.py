@@ -41,6 +41,9 @@ from molecular_calculator.ui.pages import (
     render_gmm_page,
 )
 
+# Plain-language documentation site (GitHub Pages).
+DOCS_URL = "https://yash1thredddy.github.io/molecular-properties-calculator-docs/"
+
 
 def main():
     """Main application entry point."""
@@ -130,6 +133,14 @@ def _render_sidebar():
         - InChI
         - InChI Key (online lookup)
         """)
+        st.markdown("---")
+        # Plain-language documentation site (opens in a new tab).
+        st.link_button(
+            "Documentation",
+            DOCS_URL,
+            icon=":material/menu_book:",
+            width="stretch",
+        )
 
 
 def _render_visualization_page():
