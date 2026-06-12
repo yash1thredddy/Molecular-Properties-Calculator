@@ -33,6 +33,7 @@ def render_file_uploader(
     return st.file_uploader(
         "Upload molecular data file",
         type=['csv', 'xlsx'],
+        accept_multiple_files=False,  # explicit: app processes one file at a time
         help=help_text,
         key=key
     )

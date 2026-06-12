@@ -327,7 +327,11 @@ def render_3d_regression_page():
     st.markdown("Perfect for SAR (Structure-Activity Relationship) analysis and multi-variate modeling")
 
     # File upload
-    reg_file = st.file_uploader("Upload CSV file with your data", type=['csv'], key="reg_upload")
+    reg_file = st.file_uploader(
+        "Upload CSV file with your data", type=['csv'],
+        accept_multiple_files=False,  # explicit: app processes one file at a time
+        key="reg_upload",
+    )
 
     if reg_file is not None:
         try:

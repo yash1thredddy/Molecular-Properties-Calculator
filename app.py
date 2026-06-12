@@ -83,57 +83,53 @@ def main():
         **Developed by:** Yashwanth Reddy for ITR-UIC
         """)
 
-    # Sidebar navigation
+    # Navigation — grouped, icon'd pages via Streamlit's multipage API.
+    # Each st.Page wraps a page-render callable; the menu renders in the sidebar.
+    pg = st.navigation({
+        "Analyze": [
+            st.Page(_single_molecule_page, title="Single Molecule",
+                    icon=":material/science:", default=True),
+            st.Page(_batch_processing_page, title="Batch Processing",
+                    icon=":material/dataset:"),
+            st.Page(_render_visualization_page, title="Data Visualization",
+                    icon=":material/insights:"),
+        ],
+        "Modeling": [
+            st.Page(render_3d_regression_page, title="3D Regression Analysis",
+                    icon=":material/deployed_code:"),
+            st.Page(render_gmm_page, title="GMM Analysis",
+                    icon=":material/bubble_chart:"),
+        ],
+    })
+
+    # Supplementary info below the nav menu.
     _render_sidebar()
 
-    # Get current mode
-    input_mode = st.session_state.get('input_mode', 'Single Molecule')
-
-    # Render appropriate page (online lookup always enabled)
-    if input_mode == "Single Molecule":
-        render_single_molecule_page(enable_online_lookup=True)
-
-    elif input_mode == "Batch Processing":
-        render_batch_processing_page(enable_online_lookup=True)
-
-    elif input_mode == "Data Visualization":
-        _render_visualization_page()
-
-    elif input_mode == "3D Regression Analysis":
-        render_3d_regression_page()
-
-    elif input_mode == "GMM Analysis":
-        render_gmm_page()
-
-    # Footer
+    # Render the selected page, then the shared footer.
+    pg.run()
     _render_footer()
 
 
+def _single_molecule_page():
+    """Page wrapper: single-molecule analysis with online lookup enabled."""
+    render_single_molecule_page(enable_online_lookup=True)
+
+
+def _batch_processing_page():
+    """Page wrapper: batch processing with online lookup enabled."""
+    render_batch_processing_page(enable_online_lookup=True)
+
+
 def _render_sidebar():
-    """Render the sidebar with navigation."""
-    st.sidebar.title("Navigation")
-
-    # Mode selection
-    st.sidebar.radio(
-        "Select mode:",
-        [
-            "Single Molecule",
-            "Batch Processing",
-            "Data Visualization",
-            "3D Regression Analysis",
-            "GMM Analysis"
-        ],
-        key="input_mode"
-    )
-
-    # Supported formats info
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("""
-    **Supported Formats:**
-    - SMILES
-    - InChI
-    - InChI Key (online lookup)
-    """)
+    """Render supplementary info beneath the navigation menu."""
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("""
+        **Supported Formats:**
+        - SMILES
+        - InChI
+        - InChI Key (online lookup)
+        """)
 
 
 def _render_visualization_page():
