@@ -193,10 +193,13 @@ def _maybe_calculate_properties(df):
     if smiles_col is None:
         return df
 
-    with st.expander("🧪 Optional: calculate molecular properties first", expanded=False):
+    with st.container(border=True):
+        st.markdown("#### 🧪 Calculate molecular properties from SMILES")
         st.caption(
-            f"Detected a SMILES column ('{smiles_col}'). You can calculate the "
-            "molecular properties and add them to the columns available for GMM."
+            f"Detected a SMILES column (**{smiles_col}**). Optionally calculate "
+            "molecular properties (MW, LogP, TPSA, QED, and more) and add them to "
+            "the columns available for GMM — handy when your file has structures "
+            "but not numeric data yet."
         )
         if st.button("Calculate properties", key="gmm_calc_props"):
             # TODO: _process_batch is private to batch_processing; consider extracting
