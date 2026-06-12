@@ -831,6 +831,11 @@ def calculate_batch_interference_flags(
     Returns:
         DataFrame with added interference flag columns and optional detail columns
     """
+    # Fail loudly on a bad column name rather than silently producing all-zero
+    # flags (which would read as "every compound is clean").
+    if smiles_column not in df.columns:
+        raise ValueError(f"Column '{smiles_column}' not found in DataFrame")
+
     result_df = df.copy()
 
     # Initialize flag columns
@@ -849,8 +854,8 @@ def calculate_batch_interference_flags(
 
     # Calculate flags for each compound
     for idx, row in result_df.iterrows():
-        smiles = row.get(smiles_column, '')
-        if smiles and pd.notna(smiles):
+        smiles = row[smiles_column]
+        if pd.notna(smiles) and str(smiles).strip():
             flags = get_interference_flags_from_smiles(str(smiles))
             result_df.at[idx, 'PAINS'] = 1 if flags.pains else 0
             result_df.at[idx, 'Aggregator'] = 1 if flags.aggregator else 0

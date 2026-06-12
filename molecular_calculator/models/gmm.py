@@ -151,7 +151,9 @@ def best_fit_k(values, *, k_min: int = MIN_COMPONENTS, k_max: int = MAX_COMPONEN
     best_k: Optional[int] = None
     best_bic = float("inf")
     for k in range(int(k_min), int(k_max) + 1):
-        if X.shape[0] < k:
+        # GMM needs n_samples > k (strictly), matching gmm_sentinel_check. Skipping
+        # k == n_samples avoids suggesting a K the UI would then reject.
+        if X.shape[0] <= k:
             break
         try:
             cand = GaussianMixture(

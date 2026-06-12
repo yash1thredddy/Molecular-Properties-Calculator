@@ -14,6 +14,7 @@ from molecular_calculator.models.gmm import (
     DEFAULT_RANDOM_STATE, MIN_COMPONENTS, MAX_COMPONENTS,
     prepare_numeric_data, best_fit_k, bic_aic_sweep, gmm_sentinel_check, GMMAnalysis,
 )
+from molecular_calculator.core.molecular_calculator import MolecularCalculator
 from molecular_calculator.ui.components.gmm_charts import (
     create_density_overlay, create_cluster_scatter, create_bic_aic_plot,
 )
@@ -211,17 +212,20 @@ def _maybe_calculate_properties(df):
             "but not numeric data yet."
         )
         if st.button("Calculate properties", key="gmm_calc_props"):
-            # TODO: _process_batch is private to batch_processing; consider extracting
-            # a shared property-augmentation helper to remove this cross-page coupling.
-            from molecular_calculator.ui.pages.batch_processing import _process_batch
             props = ["Molecular_Weight", "LogP", "TPSA", "HB_Donors", "HB_Acceptors",
                      "Rotatable_Bonds", "Aromatic_Rings", "QED"]
+            # Reuse the core facade's public, UI-free batch API rather than the batch
+            # page's private helper. Parallel for larger files, sequential below.
+            batch_fn = (
+                MolecularCalculator.process_batch_parallel
+                if len(df) > 50 else MolecularCalculator.process_batch
+            )
             with st.spinner("Calculating properties..."):
-                results = _process_batch(
-                    df, smiles_col, set(props), set(), None,
-                    enable_online_lookup=True, use_parallel=len(df) > 50,
+                results = batch_fn(
+                    df, smiles_col, selected_properties=set(props),
+                    enable_online_lookup=True,
                 )
-            if results is not None:
+            if results is not None and not results.empty:
                 SessionState.set("gmm_props_df", results)
                 st.success("Properties calculated and added to the column list.")
     augmented = SessionState.get("gmm_props_df")
@@ -342,7 +346,10 @@ def _render_results_if_available(df):
     run_params = SessionState.get("gmm_run_params", {})
     seed = int(run_params.get("seed", DEFAULT_RANDOM_STATE))
     standardize = bool(run_params.get("standardize", analysis.scaler is not None))
-    sweep = _cached_bic_aic_sweep(prepared.values, MIN_COMPONENTS, MAX_COMPONENTS, seed, standardize)
+    # Sweep a WIDER range than the fit slider (MIN..MAX) on purpose: the
+    # model-quality curve is for inspection, so the user can see BIC/AIC behavior
+    # beyond the selectable range and judge where the real minimum sits.
+    sweep = _cached_bic_aic_sweep(prepared.values, 1, 10, seed, standardize)
     if not sweep.empty:
         st.markdown("**Model quality (how many groups?)**")
         st.plotly_chart(

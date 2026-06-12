@@ -145,6 +145,27 @@ def test_best_fit_k_is_reproducible():
     assert best_fit_k(values) == best_fit_k(values)
 
 
+def test_best_fit_k_never_exceeds_sample_count():
+    # With only 3 samples, best_fit_k must stay below n_samples to match
+    # gmm_sentinel_check (which requires n_samples > n_components strictly),
+    # so "Auto (BIC)" never suggests a K the UI would then reject.
+    values = np.array([[1.0], [2.0], [100.0]])  # 3 rows
+    assert best_fit_k(values, k_min=2, k_max=6) < values.shape[0]
+
+
+def test_facade_batch_augments_with_gmm_property_set():
+    # The GMM page relies on the public MolecularCalculator facade (not the batch
+    # page's private _process_batch) to add numeric property columns.
+    import pandas as pd
+    from molecular_calculator.core.molecular_calculator import MolecularCalculator
+    df = pd.DataFrame({"SMILES": ["CCO", "c1ccccc1", "CC(=O)O"]})
+    out = MolecularCalculator.process_batch(
+        df, "SMILES", selected_properties={"Molecular_Weight", "LogP", "TPSA"})
+    for prop in ("Molecular_Weight", "LogP", "TPSA"):
+        assert prop in out.columns
+    assert len(out) == 3
+
+
 def test_bic_aic_sweep_shape_and_columns():
     values = _two_cluster_data()
     sweep = bic_aic_sweep(values, k_min=1, k_max=5)
