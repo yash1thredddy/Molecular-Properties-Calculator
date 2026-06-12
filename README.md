@@ -90,7 +90,23 @@ The app includes a 3D OLS regression tool for exploring relationships between mo
 
 ## GMM Analysis
 
-The app can group molecules by clustering on one or more numeric properties using a Gaussian Mixture Model. Two modes are available: single-property density overlay (visualizes how a property distributes across discovered groups) and multi-property clustering (assigns each molecule to a group based on several properties at once). The number of groups is chosen automatically via BIC, so no manual tuning is needed. Results are explained in plain language and the labeled dataset can be exported as a CSV.
+Group your molecules into natural clusters using a Gaussian Mixture Model. Upload a dataset, pick the numeric columns to analyze, and the app discovers how your compounds separate into groups -- useful for spotting chemical series, property clusters, or outliers across a library.
+
+**Two modes:**
+- **Single property** -- overlays the discovered groups on a density curve, showing how one property (e.g. molecular weight) splits into subpopulations.
+- **Multiple properties** -- clusters molecules across several properties at once and assigns each one to a group.
+
+**How it works for you:**
+- **Automatic group count** -- the app picks the optimal number of groups using BIC, so there's nothing to tune. Want manual control? A slider lets you set it yourself, and a BIC/AIC plot shows how each choice scores.
+- **Works on any numeric data** -- run it on columns you already have, or let the app calculate molecular properties (MW, LogP, TPSA, QED, and more) from a SMILES column first.
+- **Preprocessing built in** -- optional standardization and log-transforms handle skewed or differently-scaled properties.
+- **Reproducible** -- a random seed keeps results identical across runs; reset or reshuffle it whenever you want.
+
+**What you get:**
+- A per-group summary table in real units, so "Group 1" is something you can actually read
+- Each molecule's assigned group plus a confidence score, with low-confidence members flagged as potential outliers
+- A plain-language interpretation of what the groups represent
+- The fully labeled dataset as a downloadable CSV
 
 ## Visualization
 
