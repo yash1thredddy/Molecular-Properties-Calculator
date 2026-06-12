@@ -126,6 +126,16 @@ def _batch_processing_page():
 def _render_sidebar():
     """Render supplementary info beneath the navigation menu."""
     with st.sidebar:
+        # Documentation — placed directly under the navigation menu (filling the
+        # empty gap above "Supported Formats") and styled primary so it stands out.
+        # Opens the plain-language docs site in a new tab.
+        st.link_button(
+            "Documentation",
+            DOCS_URL,
+            icon=":material/menu_book:",
+            type="primary",
+            width="stretch",
+        )
         st.markdown("---")
         st.markdown("""
         **Supported Formats:**
@@ -133,14 +143,6 @@ def _render_sidebar():
         - InChI
         - InChI Key (online lookup)
         """)
-        st.markdown("---")
-        # Plain-language documentation site (opens in a new tab).
-        st.link_button(
-            "Documentation",
-            DOCS_URL,
-            icon=":material/menu_book:",
-            width="stretch",
-        )
 
 
 def _render_visualization_page():

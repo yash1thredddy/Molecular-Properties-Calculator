@@ -109,9 +109,13 @@ def render_gmm_page() -> None:
             help="Puts every property on the same scale so none dominates. "
                  "Off for single-property so the chart stays in real units.",
         )
+        # No `default=` here: the value is managed via session_state (the pruning
+        # above mutates st.session_state["gmm_log_cols"]). Passing both a default
+        # and a session-state-managed key triggers Streamlit's
+        # "default value but also had its value set via the Session State API" warning.
         st.multiselect(
             "Log-transform these columns (for skewed data)",
-            selected_cols, default=[], key="gmm_log_cols",
+            selected_cols, key="gmm_log_cols",
         )
     with cb:
         def _new_seed():
