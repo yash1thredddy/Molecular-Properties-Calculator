@@ -19,6 +19,7 @@ Public exports:
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 
 import pandas as pd
@@ -61,6 +62,89 @@ def _apply_saved_formulas(df: pd.DataFrame, defs: list[dict]) -> pd.DataFrame:
     return out
 
 
+def _formula_input(default_expr: str, cols: list[str], page_key: str, gen: int = 0) -> str:
+    """Render the formula input and return its current text.
+
+    Prefers the custom Monaco ``formula_editor`` component (column + function
+    autocomplete); falls back to ``st.text_area`` if the component is not
+    built/importable, so the page never breaks.
+
+    The widget key is suffixed with a hash of ``default_expr`` so that applying
+    a preset (which changes ``default_expr``) remounts the input seeded with the
+    preset text — Monaco's ``defaultValue`` does not re-sync after mount, and a
+    keyed ``text_area`` is likewise sticky, so a stable key would ignore the new
+    seed. While the user types (no preset change) the seed is constant, so the
+    key is stable and edits persist across reruns. ``gen`` is a form-generation
+    counter: bumping it (after Apply) changes the key so the editor remounts
+    empty, clearing the formula for the next column.
+    """
+    seed = hashlib.md5(default_expr.encode()).hexdigest()[:8]
+    st.markdown("**Formula**")
+    try:
+        from molecular_calculator.components.formula_editor import formula_editor
+
+        st.caption(
+            "Start typing a column name or function — autocomplete suggests "
+            "`[Column]` references and `func()` calls. Pick from the list rather "
+            "than typing the `[` yourself (the suggestion inserts the full "
+            "`[Column]`)."
+        )
+        return formula_editor(
+            value=default_expr,
+            columns=cols,
+            functions=fe.editor_function_names(),
+            height=120,
+            key=f"{page_key}_editor_{gen}_{seed}",
+        )
+    except Exception:
+        # Component not built or failed to load — graceful text_area fallback.
+        return st.text_area(
+            "Formula",
+            value=default_expr,
+            key=f"{page_key}_fexpr_{gen}_{seed}",
+            height=80,
+            label_visibility="collapsed",
+        )
+
+
+def _chip(label: str, highlight: bool) -> str:
+    """Return an HTML chip span for a column name (label is HTML-escaped)."""
+    safe = html.escape(str(label))
+    style = (
+        "background:#FF6B6B;color:#fff;border:1px solid #FF6B6B;"
+        if highlight
+        else "background:#F0F2F6;color:#262730;border:1px solid #E0E0E0;"
+    )
+    return (
+        f"<span style='{style}padding:1px 8px;border-radius:10px;"
+        f"font-size:0.78em;font-family:monospace'>{safe}</span>"
+    )
+
+
+def _render_column_chips(cols: list[str], working_name: str) -> None:
+    """Show every column available to a formula as a chip, highlighting the
+    column currently being created (``working_name``).
+
+    Replaces the old single-column reference picker: the chips give an
+    at-a-glance list of valid ``[Column]`` names while the editor's autocomplete
+    handles actual insertion. The new column isn't in ``cols`` yet, so it's shown
+    as a pending highlighted chip (or, if the name matches an existing column,
+    that existing column is highlighted to flag the overwrite).
+    """
+    if not cols and not working_name:
+        return
+    chips = [_chip(c, bool(working_name) and c == working_name) for c in cols]
+    if working_name and working_name not in cols:
+        chips.append(_chip(f"{working_name} (new)", True))
+    st.caption("Columns available to reference:")
+    st.markdown(
+        "<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px'>"
+        + "".join(chips)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main component
 # ---------------------------------------------------------------------------
@@ -80,99 +164,89 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
     if defs_key not in st.session_state:
         st.session_state[defs_key] = []
 
-    with st.expander("➕ Custom formula columns", expanded=False):
+    # Form-generation counter: bumped after each Apply so the name + formula
+    # inputs remount empty for the next column. Without this, a just-applied
+    # column lingers in the form and spuriously trips the "name already exists"
+    # check (the column now exists because Apply added it).
+    gen_key = f"{page_key}_formgen"
+    gen = st.session_state.get(gen_key, 0)
+
+    # Apply already-saved formulas up front so their columns are part of `cols`
+    # below. That lets the editor's autocomplete, the live preview, and any
+    # further formulas reference previously-created columns (formula chaining).
+    df = _apply_saved_formulas(df, st.session_state[defs_key])
+
+    with st.expander("➕ Custom calculations", expanded=False):
         cols = list(df.columns)
 
-        # ------------------------------------------------------------------
-        # Layout: formula input (left) | column picker + function ref (right)
-        # ------------------------------------------------------------------
-        c1, c2 = st.columns([2, 1])
+        # Preset gallery. The Monaco editor's autocomplete replaces the old
+        # column-reference picker and static function list.
+        preset_names = ["(none)"] + [p.name for p in fp.PRESETS]
+        chosen = st.selectbox(
+            "Preset (optional)",
+            preset_names,
+            key=f"{page_key}_preset",
+        )
 
-        with c2:
-            st.caption("Insert a column reference")
-            picked = st.selectbox(
-                "Columns",
-                cols,
-                key=f"{page_key}_fcol",
-                label_visibility="collapsed",
-            )
-            st.code(f"[{picked}]", language=None)
-            st.caption(
-                "**Functions:** abs round ceil floor sqrt exp ln log10 log "
-                "pow min max mod if() switch() isempty coalesce concat "
-                "contains lower upper len substring"
-            )
+        default_expr: str = ""
+        default_name: str = ""
 
-        with c1:
-            # --------------------------------------------------------------
-            # Preset gallery
-            # --------------------------------------------------------------
-            preset_names = ["(none)"] + [p.name for p in fp.PRESETS]
-            chosen = st.selectbox(
-                "Preset (optional)",
-                preset_names,
-                key=f"{page_key}_preset",
-            )
+        if chosen != "(none)":
+            preset = next(p for p in fp.PRESETS if p.name == chosen)
+            expr = preset.expression
+            ok = True
+            mapping: dict[str, str] = {}
+            raw_flags: dict[str, bool] = {}
 
-            default_expr: str = ""
-            default_name: str = ""
-
-            if chosen != "(none)":
-                preset = next(p for p in fp.PRESETS if p.name == chosen)
-                expr = preset.expression
-                ok = True
-                mapping: dict[str, str] = {}
-                raw_flags: dict[str, bool] = {}
-
-                for key in preset.needs_activity:
-                    detected = fp.detect_activity_column(df, key)
-                    sel = st.selectbox(
-                        f"Map activity:{key}",
-                        ["(none)"] + cols,
-                        index=(cols.index(detected) + 1) if (detected and detected in cols) else 0,
-                        key=f"{page_key}_act_{key}",
-                    )
-                    if sel == "(none)":
-                        ok = False
-                    else:
-                        mapping[key] = sel
-
-                        # Task 16, Step 5 — unit radio for p-scale activity keys
-                        if key in ("pIC50", "pKi"):
-                            unit = st.radio(
-                                f"'{sel}' is:",
-                                ["already log-scale (pIC50/pKi)", "raw IC50/Ki in nM"],
-                                key=f"{page_key}_unit_{key}",
-                                horizontal=True,
-                            )
-                            raw_flags[key] = unit.startswith("raw")
-
-                if ok:
-                    try:
-                        # Pass raw_concentration so nM columns get -log10 injection
-                        expr = fp.resolve_placeholders(
-                            expr, mapping, raw_concentration=raw_flags
-                        )
-                        default_expr, default_name = expr, preset.name
-                    except KeyError:
-                        st.warning("Map all activity columns to use this preset.")
+            for key in preset.needs_activity:
+                detected = fp.detect_activity_column(df, key)
+                sel = st.selectbox(
+                    f"Map activity:{key}",
+                    ["(none)"] + cols,
+                    index=(cols.index(detected) + 1) if (detected and detected in cols) else 0,
+                    key=f"{page_key}_act_{key}",
+                )
+                if sel == "(none)":
+                    ok = False
                 else:
-                    st.info(
-                        f"{preset.description}  \nNeeds: "
-                        f"{', '.join(preset.needs_activity)}"
-                    )
+                    mapping[key] = sel
 
-            new_name = st.text_input(
-                "New column name",
-                value=default_name,
-                key=f"{page_key}_fname",
-            )
-            formula = st.text_area(
-                "Formula",
-                value=default_expr,
-                key=f"{page_key}_fexpr",
-                height=80,
-            )
+                    # Task 16, Step 5 — unit radio for p-scale activity keys
+                    if key in ("pIC50", "pKi"):
+                        unit = st.radio(
+                            f"'{sel}' is:",
+                            ["already log-scale (pIC50/pKi)", "raw IC50/Ki in nM"],
+                            key=f"{page_key}_unit_{key}",
+                            horizontal=True,
+                        )
+                        raw_flags[key] = unit.startswith("raw")
+
+            if ok:
+                try:
+                    # Pass raw_concentration so nM columns get -log10 injection
+                    expr = fp.resolve_placeholders(
+                        expr, mapping, raw_concentration=raw_flags
+                    )
+                    default_expr, default_name = expr, preset.name
+                except KeyError:
+                    st.warning("Map all activity columns to use this preset.")
+            else:
+                st.info(
+                    f"{preset.description}  \nNeeds: "
+                    f"{', '.join(preset.needs_activity)}"
+                )
+
+        new_name = st.text_input(
+            "New column name",
+            value=default_name,
+            key=f"{page_key}_fname_{gen}",
+        )
+
+        # Reference: every column available to the formula, with the column being
+        # created highlighted. Replaces the old single-column reference picker.
+        _render_column_chips(cols, new_name)
+
+        formula = _formula_input(default_expr, cols, page_key, gen)
 
         # ------------------------------------------------------------------
         # Live validation + preview
@@ -185,11 +259,15 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
                 preview_df = df.head(10)
                 series, failed = fe.evaluate(cf, preview_df)
                 st.success("✅ Valid")
+                st.caption(
+                    "Preview only — this is a draft of the first rows. The column "
+                    "is added to your data when you click **Apply column** below."
+                )
                 prev = preview_df.copy()
                 prev[new_name or "result"] = series.values
                 st.dataframe(
                     prev[[*cols[:2], new_name or "result"]].head(10),
-                    use_container_width=True,
+                    width='stretch',
                 )
                 if failed:
                     st.caption(
@@ -199,7 +277,8 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
 
                 if new_name in cols:
                     st.caption(
-                        "⚠️ Name already exists — choose another or it will overwrite."
+                        f"ℹ️ A column named **{new_name}** already exists — "
+                        "applying will overwrite it."
                     )
 
                 # Task 17 — large-dataset performance warning
@@ -209,13 +288,36 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
                         "and may take a few seconds."
                     )
 
+                # Highlight the button (primary colour) only once it's ready to
+                # apply — a valid formula (we're in the no-error branch) plus a
+                # column name and non-empty data.
+                ready = bool(new_name) and len(df) > 0
                 if st.button(
                     "Apply column",
                     key=f"{page_key}_apply",
-                    disabled=(not new_name or len(df) == 0),
+                    type="primary" if ready else "secondary",
+                    disabled=not ready,
                 ):
-                    st.session_state[defs_key].append(
-                        {"name": new_name, "expression": formula}
+                    overwrote = new_name in cols
+                    new_def = {"name": new_name, "expression": formula}
+                    # Replace an existing definition of the same name (so the
+                    # applied-formulas list doesn't accumulate duplicates), else
+                    # append a new one.
+                    defs = st.session_state[defs_key]
+                    for i, d in enumerate(defs):
+                        if d["name"] == new_name:
+                            defs[i] = new_def
+                            break
+                    else:
+                        defs.append(new_def)
+                    # Reset the form (name + formula) so the next column starts
+                    # fresh and the just-applied name doesn't trip the warning.
+                    st.session_state[gen_key] = gen + 1
+                    st.session_state.pop(f"{page_key}_preset", None)
+                    st.toast(
+                        f"{'Updated' if overwrote else 'Added'} column "
+                        f"'{new_name}'",
+                        icon="✅",
                     )
                     st.rerun()
 
@@ -257,5 +359,5 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
             except Exception:
                 st.error("Invalid formula JSON.")
 
-    # Always (re)apply saved formulas to the working df before returning
-    return _apply_saved_formulas(df, st.session_state[defs_key])
+    # `df` already has the saved formulas applied (done up front for chaining).
+    return df

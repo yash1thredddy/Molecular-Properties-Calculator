@@ -93,6 +93,19 @@ ALLOWED_FUNCTIONS = {
 USER_FUNCTIONS = frozenset(ALLOWED_FUNCTIONS) - {"_require"} | {"__if__", "__switch__"}
 
 
+def editor_function_names() -> list[str]:
+    """Return the user-typable function names, sorted, for editor autocomplete.
+
+    Single source of truth shared with the Monaco formula editor so its
+    completions never drift from what the engine actually accepts. Excludes
+    internal helpers (``_require``) and the ``__if__``/``__switch__`` parse
+    placeholders, but includes the ``if``/``switch`` DSL keyword forms the
+    user actually types.
+    """
+    names = (set(ALLOWED_FUNCTIONS) - {"_require"}) | set(_DSL_KEYWORD_MAP)
+    return sorted(names)
+
+
 # ---------------------------------------------------------------------------
 # Task 2: AST allowlist validator
 # ---------------------------------------------------------------------------

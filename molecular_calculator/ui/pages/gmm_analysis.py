@@ -41,8 +41,6 @@ def render_gmm_page() -> None:
         return
 
     st.success(f"✅ Loaded {len(df):,} rows, {len(df.columns)} columns")
-    with st.expander("📋 Data Preview (first 50 rows)", expanded=True):
-        st.dataframe(df.head(50), width="stretch")
 
     # Optional: compute molecular properties first when a SMILES column exists.
     df = _maybe_calculate_properties(df)
@@ -62,6 +60,12 @@ def render_gmm_page() -> None:
             st.session_state["gmm_log_cols"] = [
                 c for c in st.session_state["gmm_log_cols"] if c in valid]
     st.session_state["gmm_formula_schema_hash"] = _new_hash
+
+    # One always-current table: shows the raw upload, then refreshes in place to
+    # include calculated properties and any applied formula columns. (Replaces the
+    # old pre-calculation preview so there's never a stale second table.)
+    with st.expander("📋 Current data (first 50 rows)", expanded=True):
+        st.dataframe(df.head(50), width="stretch")
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if len(numeric_cols) < 1:

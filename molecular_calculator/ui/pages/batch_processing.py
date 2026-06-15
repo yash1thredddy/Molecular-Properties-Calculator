@@ -556,7 +556,10 @@ def _display_batch_results(
         df,
         key_prefix="batch_viz",
         smiles_col=smiles_col,
-        name_col=name_col
+        name_col=name_col,
+        # Batch already renders its own formula builder + Results Table above;
+        # don't show a second one inside the visualization section.
+        show_formula_builder=False,
     )
 
     # Property explanations

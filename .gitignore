@@ -152,4 +152,12 @@ nul
 # Claude Code
 .claude/
 
+# Custom Monaco formula-editor component (frontend)
+# Ignore installed dependencies, but DO track the built bundle: Streamlit Cloud
+# serves the committed build and never runs `npm install`/`npm run build`.
+# The generic `build/` rule above would otherwise hide it, so re-include it here.
+molecular_calculator/components/formula_editor/frontend/node_modules/
+!molecular_calculator/components/formula_editor/frontend/build/
+!molecular_calculator/components/formula_editor/frontend/build/**
+
 

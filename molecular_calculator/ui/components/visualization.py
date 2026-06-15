@@ -247,7 +247,8 @@ def render_interactive_visualization(
     df: pd.DataFrame,
     key_prefix: str = "viz",
     smiles_col: Optional[str] = None,
-    name_col: Optional[str] = None
+    name_col: Optional[str] = None,
+    show_formula_builder: bool = True,
 ) -> None:
     """Render interactive data visualization section.
 
@@ -259,10 +260,20 @@ def render_interactive_visualization(
         key_prefix: Unique key prefix for all widgets (must be unique per page)
         smiles_col: Optional SMILES column for structure viewer integration
         name_col: Optional name/ID column for display
+        show_formula_builder: When True (standalone Data Visualization page), render
+            the formula builder plus a current-data reference table here. Batch sets
+            this False because it already renders its own formula builder and Results
+            Table above — this avoids a confusing second builder on that page.
     """
-    # Formula builder: let users add computed columns before axis/encoding selectors.
-    from molecular_calculator.ui.components.formula_builder import render_formula_builder
-    df = render_formula_builder(df, page_key=key_prefix)
+    # Formula builder + current-data reference. Skipped when the host page already
+    # provides them (Batch) so the page doesn't show two formula builders.
+    if show_formula_builder:
+        from molecular_calculator.ui.components.formula_builder import render_formula_builder
+        df = render_formula_builder(df, page_key=key_prefix)
+        # One always-current reference table (includes any applied formula columns)
+        # so users can look up column names while choosing axes.
+        with st.expander("📋 Current data (first 50 rows)", expanded=False):
+            st.dataframe(df.head(50), width='stretch')
 
     # Get column types
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()

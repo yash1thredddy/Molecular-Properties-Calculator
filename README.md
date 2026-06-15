@@ -116,6 +116,32 @@ Interactive charts built with Plotly:
 - 3D scatter with regression surfaces
 - Click any data point to view its 2D structure
 
+## Custom calculations
+
+Build your own computed columns from the data you already have -- no coding required. Available on the **Batch Processing**, **Data Visualization**, and **GMM Analysis** pages under the **➕ Custom calculations** panel.
+
+Reference any column with square brackets and combine columns with math, logic, and text functions:
+
+```
+([MW] + 10 * [TPSA]) / [HB_Acceptors]
+```
+
+**A smart editor.** Start typing a column name or function and the editor suggests `[Column]` references and `func()` calls -- so you never have to remember exact spelling. (Pick from the list rather than typing the `[` yourself; the suggestion inserts the full `[Column]`.)
+
+**Functions you can use:**
+- **Math** -- `abs`, `round`, `ceil`, `floor`, `sqrt`, `exp`, `ln`, `log10`, `log`, `pow`, `min`, `max`, `mod`
+- **Logic** -- `if(condition, then, else)`, `switch(value, case1, result1, …, default)`
+- **Text** -- `concat`, `contains`, `lower`, `upper`, `len`, `substring`, `isempty`, `coalesce`
+
+**How it works:**
+1. Open the panel, name your new column, and write a formula -- or pick a **preset** for common calculations.
+2. A live preview shows the result on the first few rows. It's a draft; nothing is added to your data yet.
+3. Click **Apply column** to add it to your table. The form clears so you can add the next one, and applied formulas are listed for review.
+4. Add as many columns as you like -- a later formula can reference a column an earlier one created (formula chaining). Re-using a name overwrites that column.
+5. Remove any column from the applied list, or **export/import** your whole formula set as JSON to reuse it on another dataset.
+
+Custom columns flow straight into charts, GMM clustering, and exports, just like the built-in properties. Formulas are evaluated in a safe sandbox -- no arbitrary code runs.
+
 ## Rule Compliance
 
 **Lipinski Rule of Five** — A molecule passes (violation = 0) if:
