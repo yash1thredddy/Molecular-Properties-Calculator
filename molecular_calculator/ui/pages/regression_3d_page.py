@@ -38,6 +38,9 @@ from molecular_calculator.ui.components.plotly_3d_utils import (
     add_predicted_markers,
 )
 
+# Robust CSV reader (handles non-UTF-8 exports from Excel/Windows tools)
+from molecular_calculator.ui.components.file_uploader import read_csv_robust
+
 
 # ============================================================================
 # Visualization rendering functions
@@ -335,7 +338,7 @@ def render_3d_regression_page():
 
     if reg_file is not None:
         try:
-            reg_df = pd.read_csv(reg_file)
+            reg_df = read_csv_robust(reg_file)
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
             st.stop()
@@ -704,7 +707,8 @@ def _display_regression_results(model, summary, x_var: str, y_var: str, z_var: s
     with col2:
         st.download_button(
             label="Download Stats (CSV)",
-            data=stats_df.to_csv(index=False),
+            # UTF-8 BOM (utf-8-sig) so the file opens correctly in Excel on Windows.
+            data=stats_df.to_csv(index=False).encode("utf-8-sig"),
             file_name=f"3D_OLS_Statistics_{z_var}.csv",
             mime="text/csv"
         )

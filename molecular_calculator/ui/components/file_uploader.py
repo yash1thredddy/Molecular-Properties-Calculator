@@ -17,6 +17,47 @@ from molecular_calculator.utils.session_state import SessionState
 from molecular_calculator.config.settings import config
 
 
+# Encodings tried, in order, when reading uploaded CSV files.
+#   - utf-8-sig: modern default; also transparently strips a leading BOM.
+#   - cp1252:    Windows-1252, what Excel/Windows tools export (µ, en-dash,
+#                smart quotes) - the common source of UnicodeDecodeError.
+#   - latin-1:   maps all 256 byte values, so it never raises - last-resort
+#                safety net that guarantees the file loads rather than crashing.
+CSV_ENCODINGS = ('utf-8-sig', 'cp1252', 'latin-1')
+
+
+def read_csv_robust(file_like, **kwargs) -> pd.DataFrame:
+    """Read a CSV, retrying across common encodings on decode failure.
+
+    A plain ``pd.read_csv`` defaults to UTF-8 and raises ``UnicodeDecodeError``
+    on files saved as Windows-1252/Latin-1 (e.g. a ``Potency µM`` header, where
+    ``µ`` is byte 0xb5). This tries UTF-8 first and falls back to legacy
+    encodings, rewinding the stream between attempts.
+
+    Only ``UnicodeDecodeError`` triggers a fallback - a genuinely malformed CSV
+    still raises its real parser error so the caller can surface it.
+
+    Args:
+        file_like: A file path or file-like object (e.g. Streamlit UploadedFile).
+        **kwargs: Passed through to ``pd.read_csv``.
+
+    Returns:
+        Parsed DataFrame.
+    """
+    last_error: Optional[UnicodeDecodeError] = None
+    for encoding in CSV_ENCODINGS:
+        try:
+            if hasattr(file_like, 'seek'):
+                file_like.seek(0)
+            return pd.read_csv(file_like, encoding=encoding, **kwargs)
+        except UnicodeDecodeError as e:
+            last_error = e
+            continue
+    # latin-1 cannot raise UnicodeDecodeError, so this is effectively
+    # unreachable; re-raise defensively if every attempt somehow failed.
+    raise last_error
+
+
 def render_file_uploader(
     key: str = "file_uploader",
     help_text: str = "Upload CSV or XLSX file with molecular structures"
@@ -78,7 +119,7 @@ def read_uploaded_file(
         filename = uploaded_file.name.lower()
 
         if filename.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+            df = read_csv_robust(uploaded_file)
         elif filename.endswith('.xlsx'):
             df = pd.read_excel(uploaded_file, engine='openpyxl')
         else:
@@ -282,7 +323,9 @@ def create_download_button(
         label: Button label
         key: Unique key for the widget
     """
-    csv = df.to_csv(index=False)
+    # Encode with a UTF-8 BOM (utf-8-sig) so Excel on Windows auto-detects
+    # UTF-8 instead of guessing cp1252 and mangling characters like µ.
+    csv = df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         label=label,
         data=csv,

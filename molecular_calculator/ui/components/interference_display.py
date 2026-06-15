@@ -372,7 +372,8 @@ def render_flagged_compounds_table(
 
     with footer_col2:
         # Download button for filtered flagged compounds
-        csv_data = filtered_df[display_cols].to_csv(index=False)
+        # UTF-8 BOM (utf-8-sig) so the file opens correctly in Excel on Windows.
+        csv_data = filtered_df[display_cols].to_csv(index=False).encode("utf-8-sig")
         filter_label = f"_{'-'.join(selected_flags)}" if selected_flags else ""
         st.download_button(
             label="Download CSV",
