@@ -36,6 +36,7 @@ class PreparedData:
     n_dropped: int
     column_names: List[str]
     logged_columns: List[str] = field(default_factory=list)
+    kept_positions: np.ndarray = field(default_factory=lambda: np.array([], dtype=int))
 
 
 def prepare_numeric_data(
@@ -57,6 +58,7 @@ def prepare_numeric_data(
     sub = df[columns].apply(pd.to_numeric, errors="coerce")
     sub = sub.replace([np.inf, -np.inf], np.nan)
     mask = sub.notna().all(axis=1)
+    kept_positions = np.flatnonzero(mask.to_numpy())
     kept = sub[mask]
     n_dropped = int((~mask).sum())
     if kept.empty:
@@ -82,6 +84,7 @@ def prepare_numeric_data(
         n_dropped=n_dropped,
         column_names=columns,
         logged_columns=applied_log,
+        kept_positions=kept_positions,
     )
 
 
@@ -106,6 +109,11 @@ def gmm_sentinel_check(values, n_components: int) -> Tuple[bool, Optional[str]]:
     arr = np.asarray(values, dtype=float)
     if arr.ndim == 1:
         arr = arr.reshape(-1, 1)
+    if arr.size and not np.isfinite(arr).all():
+        return False, (
+            "Some selected values are missing or non-numeric. Remove or fill those "
+            "rows/columns before grouping."
+        )
     n = arr.shape[0]
     # GMM requires n_samples > n_components (strictly), so n == n_components is rejected.
     if n <= n_components:
@@ -316,14 +324,18 @@ class GMMAnalysis:
             return np.zeros(len(self.log_likelihood), dtype=bool)
         return mask
 
-    def labeled_dataframe(self, original_df: pd.DataFrame, kept_index) -> pd.DataFrame:
+    def labeled_dataframe(self, original_df: pd.DataFrame, kept_positions) -> pd.DataFrame:
         """Return a copy of ``original_df`` with GMM_Group (1-based) and
-        GMM_Confidence_% columns. Dropped rows (not in ``kept_index``) stay NA."""
+        GMM_Confidence_% columns. Dropped rows stay NA. ``kept_positions`` are the
+        integer row positions that survived prepare_numeric_data — positional
+        assignment is robust to non-unique/duplicate indexes."""
         out = original_df.copy()
         out["GMM_Group"] = pd.NA
         out["GMM_Confidence_%"] = pd.NA
-        out.loc[kept_index, "GMM_Group"] = (self.labels + 1).astype(int)
-        out.loc[kept_index, "GMM_Confidence_%"] = np.round(self.confidence * 100, 1)
+        gcol = out.columns.get_loc("GMM_Group")
+        ccol = out.columns.get_loc("GMM_Confidence_%")
+        out.iloc[kept_positions, gcol] = (self.labels + 1).astype(int)
+        out.iloc[kept_positions, ccol] = np.round(self.confidence * 100, 1)
         return out
 
 

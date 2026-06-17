@@ -6,9 +6,109 @@ CSV/XLSX and presents the resulting groups in plain language. Two modes:
 single-property (density overlay) and multi-property (clustering scatter).
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+
+# Matches a number with an optional leading comparison qualifier, e.g. ">12",
+# "< 0.5", ">=100", "≤ 3.2", "~5". 'op' captures the operator (if any), 'num'
+# the numeric part. Censored assay values (e.g. MIC ">12 µM") arrive this way
+# and otherwise force the whole column to stay text.
+_QUALIFIED_NUM_RE = re.compile(
+    r'^\s*(?P<op>>=|<=|≥|≤|>|<|~)?\s*'
+    r'(?P<num>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*$'
+)
+
+
+def _strip_qualifier(value):
+    """Return the float inside a possibly-qualified value, else None.
+
+    ``">12"`` -> 12.0, ``"5"`` -> 5.0, numbers pass through, and anything that
+    is not a single numeric value (text, ranges like ``"100-200"``, booleans)
+    returns None.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if pd.notna(value) else None
+    if value is None:
+        return None
+    match = _QUALIFIED_NUM_RE.match(str(value).strip())
+    return float(match.group("num")) if match else None
+
+
+def find_qualified_columns(df, threshold: float = 0.8):
+    """Detect text columns that are mostly numbers but carry comparison qualifiers.
+
+    Many assay exports store censored measurements as strings with a comparison
+    operator (``">12"``, ``"<0.5"``). pandas keeps such a column as text, which
+    excludes it from numeric analysis. This only *detects* those columns; it does
+    not modify anything, because stripping the operator changes the meaning of
+    the data and must be the user's explicit choice (see ``strip_qualifiers``).
+
+    A column qualifies when at least ``threshold`` of its non-null values parse as
+    numbers AND at least one of them carries a ``>``/``<`` operator. Genuine text
+    columns (SMILES, names, status) and clean numeric columns are ignored.
+
+    Args:
+        df: Source DataFrame (not mutated).
+        threshold: Minimum fraction of non-null values that must parse as numbers.
+
+    Returns:
+        Dict mapping each detected column name to the count of *qualified* values
+        (those carrying a ``>``/``<``), so the caller can describe the choice.
+    """
+    report = {}
+    for col in df.columns:
+        # Already-numeric columns have nothing to strip. Everything else
+        # (object, StringDtype, etc.) is a candidate.
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        non_null = df[col].dropna()
+        if len(non_null) == 0:
+            continue
+
+        n_parseable = 0
+        n_qualified = 0
+        for value in non_null:
+            if isinstance(value, str):
+                match = _QUALIFIED_NUM_RE.match(value.strip())
+                if match:
+                    n_parseable += 1
+                    if match.group("op"):
+                        n_qualified += 1
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                n_parseable += 1
+
+        if n_parseable / len(non_null) >= threshold and n_qualified > 0:
+            report[col] = n_qualified
+
+    return report
+
+
+def strip_qualifiers(df, columns):
+    """Return a copy of ``df`` with ``columns`` converted to numeric by removing
+    any comparison operators (``">12"`` -> ``12.0``).
+
+    This is the opt-in transform applied only after the user chooses to remove
+    the symbols. Values that are not numeric-like become NaN (and are dropped
+    downstream by ``prepare_numeric_data``).
+
+    Args:
+        df: Source DataFrame (not mutated).
+        columns: Iterable of column names to convert.
+
+    Returns:
+        A new DataFrame with the requested columns converted to numeric.
+    """
+    df = df.copy()
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].map(_strip_qualifier)
+    return df
 
 from molecular_calculator.models.gmm import (
     DEFAULT_RANDOM_STATE, MIN_COMPONENTS, MAX_COMPONENTS,
@@ -42,8 +142,50 @@ def render_gmm_page() -> None:
 
     st.success(f"✅ Loaded {len(df):,} rows, {len(df.columns)} columns")
 
+    # Detect columns that store censored values as text (">12"). Removing the
+    # operator changes the data's meaning, so it is the user's explicit choice.
+    qualified = find_qualified_columns(df)
+    strip = False
+    if qualified:
+        details = ", ".join(
+            f"**{col}** ({n} value{'s' if n != 1 else ''})"
+            for col, n in qualified.items()
+        )
+        strip = st.checkbox(
+            "Remove the `>` / `<` symbols and use the number (e.g. `>12` → `12`)",
+            value=False,
+            key="gmm_strip_qualifiers",
+            help="Your choice: treats a censored value as an exact number, which can "
+                 "bias the groups. Leave unchecked to keep these columns as-is.",
+        )
+        if not strip:
+            st.warning(
+                "⚠️ These columns contain comparison symbols like `>` or `<` "
+                f"(e.g. censored measurements): {details}. While the symbols remain, "
+                "they are treated as text and excluded from analysis."
+            )
+
+    # Invalidate any stored fit when the strip choice changes, so a stale analysis
+    # (built on a stripped column) is never rendered against a reverted df (#12).
+    _prev_strip = st.session_state.get("gmm_strip_prev")
+    if _prev_strip is not None and _prev_strip != strip:
+        for k in ("gmm_analysis", "gmm_prepared", "gmm_kept_index", "gmm_run_params"):
+            st.session_state.pop(k, None)
+    st.session_state["gmm_strip_prev"] = strip
+
     # Optional: compute molecular properties first when a SMILES column exists.
     df = _maybe_calculate_properties(df)
+
+    # Apply the strip choice HERE — after property calc — because
+    # _maybe_calculate_properties may return a cached frame that ignores earlier
+    # transforms. Recompute qualified on the (possibly augmented) df so the choice
+    # always reflects the live UI state (#4).
+    if strip:
+        to_strip = list(find_qualified_columns(df).keys())
+        if to_strip:
+            df = strip_qualifiers(df, to_strip)
+            st.caption("✓ Symbols removed — the affected column(s) are now available.")
+
     SessionState.set("gmm_working_df", df)
 
     # Formula builder: let users add computed columns before the column selector.
@@ -336,9 +478,16 @@ def _render_results_if_available(df):
         )
 
     # 2. Per-group summary table — averages in REAL units from the original rows.
-    summary = _summary_table(df, kept_index, analysis, selected_cols)
+    summary = _summary_table(df, prepared.kept_positions, analysis, selected_cols)
     st.markdown("**Group summary**")
     st.dataframe(summary, width="stretch", hide_index=True)
+    if prepared.logged_columns:
+        st.caption(
+            "Note: for log-transformed column(s) "
+            f"({', '.join(prepared.logged_columns)}), the scatter's group-center ★ "
+            "is plotted in log space, while this table shows real-unit averages — "
+            "mean(log x) ≠ log(mean x), so the two differ by design."
+        )
 
     # 3. Headline chart.
     if analysis.n_features == 1:
@@ -390,7 +539,7 @@ def _render_results_if_available(df):
     )
 
     # 6. Download labeled CSV.
-    labeled = analysis.labeled_dataframe(df, kept_index)
+    labeled = analysis.labeled_dataframe(df, prepared.kept_positions)
     create_download_button(
         labeled, filename="gmm_results.csv",
         label="⬇ Download data with group labels", key="gmm_download",
@@ -404,10 +553,10 @@ def _cached_bic_aic_sweep(values, k_min, k_max, random_state, standardize):
                          random_state=random_state, standardize=standardize)
 
 
-def _summary_table(df, kept_index, analysis, selected_cols):
+def _summary_table(df, kept_positions, analysis, selected_cols):
     """Per-group table: size, % and the real-unit average of each selected column,
     computed from the ORIGINAL (pre-transform) kept rows so values are honest."""
-    kept = df.loc[kept_index, selected_cols].apply(pd.to_numeric, errors="coerce")
+    kept = df.iloc[kept_positions][selected_cols].apply(pd.to_numeric, errors="coerce")
     kept = kept.copy()
     kept["__group__"] = analysis.labels + 1
     n = len(kept)

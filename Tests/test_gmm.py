@@ -320,3 +320,23 @@ def test_bic_aic_plot_has_two_lines():
     assert {"BIC", "AIC"}.issubset(names)
     assert len(fig.layout.shapes) == 1
     assert fig.layout.shapes[0].x0 == 2  # recommended_k
+
+
+from molecular_calculator.models.gmm import gmm_sentinel_check
+
+
+def test_sentinel_rejects_nan_inf():
+    ok, msg = gmm_sentinel_check([[1.0], [2.0], [np.nan], [4.0], [5.0]], 2)
+    assert ok is False
+    assert "missing" in msg.lower() or "non-numeric" in msg.lower()
+
+
+from molecular_calculator.models.gmm import prepare_numeric_data, GMMAnalysis
+
+
+def test_labeled_dataframe_handles_duplicate_index():
+    df = pd.DataFrame({"x": [1.0, 1.1, 5.0, 5.1, 9.0, 9.2]}, index=[0, 0, 1, 1, 2, 2])
+    prep = prepare_numeric_data(df, ["x"])
+    analysis = GMMAnalysis(prep.values, prep.column_names, n_components=2, random_state=42)
+    out = analysis.labeled_dataframe(df, prep.kept_positions)
+    assert out["GMM_Group"].notna().sum() == 6
