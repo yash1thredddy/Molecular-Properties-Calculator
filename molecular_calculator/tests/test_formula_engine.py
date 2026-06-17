@@ -152,39 +152,39 @@ def _ev(formula, df):
 
 def test_evaluate_basic_math():
     df = pd.DataFrame({"MW": [100.0, 200.0]})
-    out, failed = _ev("[MW] / 1000", df)
-    assert list(out) == [0.1, 0.2] and failed == 0
+    out, report = _ev("[MW] / 1000", df)
+    assert list(out) == [0.1, 0.2] and report.errored == 0 and report.blank == 0
 
 
 def test_nan_propagates_through_comparison():
     df = pd.DataFrame({"MW": [600.0, np.nan]})
-    out, failed = _ev("if([MW] > 500, 1, 0)", df)
+    out, report = _ev("if([MW] > 500, 1, 0)", df)
     assert out.iloc[0] == 1
-    assert pd.isna(out.iloc[1]) and failed == 1
+    assert pd.isna(out.iloc[1]) and report.blank == 1 and report.errored == 0
 
 
 def test_if_laziness_untaken_branch_safe():
     df = pd.DataFrame({"x": [0.0], "y": [5.0]})
-    out, failed = _ev("if([x] != 0, [y] / [x], 0)", df)
-    assert out.iloc[0] == 0 and failed == 0  # no ZeroDivision, branch not taken
+    out, report = _ev("if([x] != 0, [y] / [x], 0)", df)
+    assert out.iloc[0] == 0 and report.errored == 0  # no ZeroDivision, branch not taken
 
 
 def test_coalesce_escape_hatch():
     df = pd.DataFrame({"p": [np.nan]})
-    out, failed = _ev("coalesce([p], 0) + 1", df)
-    assert out.iloc[0] == 1 and failed == 0
+    out, report = _ev("coalesce([p], 0) + 1", df)
+    assert out.iloc[0] == 1 and report.errored == 0 and report.blank == 0
 
 
 def test_pd_na_sanitized():
     df = pd.DataFrame({"v": pd.array([1, pd.NA], dtype="Int64")})
-    out, failed = _ev("[v] * 2", df)
+    out, report = _ev("[v] * 2", df)
     assert out.iloc[0] == 2 and pd.isna(out.iloc[1])
 
 
 def test_empty_df():
     df = pd.DataFrame({"A": []})
-    out, failed = _ev("[A] + 1", df)
-    assert len(out) == 0 and failed == 0
+    out, report = _ev("[A] + 1", df)
+    assert len(out) == 0 and report.errored == 0 and report.blank == 0
 
 
 def test_evaluate_missing_column_errors():
@@ -213,7 +213,7 @@ def test_security_blocked(formula):
     cf = fe.compile(formula, ["A"])
     if cf.error is None:
         # if it compiled, evaluation must not escape — should fail-safe to NaN
-        out, failed = fe.evaluate(cf, pd.DataFrame({"A": [2.0]}))
+        out, report = fe.evaluate(cf, pd.DataFrame({"A": [2.0]}))
         assert pd.isna(out.iloc[0])
     else:
         assert cf.error  # rejected at compile
@@ -229,8 +229,8 @@ def test_string_literal_with_if_preserved():
     # contains([Name], "if(x)") should return True because "if(x)" is in "zif(x)q"
     cf = fe.compile('contains([Name], "if(x)")', list(df.columns))
     assert cf.error is None, cf.error
-    out, failed = fe.evaluate(cf, df)
-    assert out.iloc[0] == True and failed == 0
+    out, report = fe.evaluate(cf, df)
+    assert out.iloc[0] == True and report.errored == 0
 
 
 def test_reserved_namespace_rejected():
@@ -244,5 +244,76 @@ def test_coalesce_with_subexpr_nan_returns_fallback():
     df = pd.DataFrame({"A": [np.nan]})
     cf = fe.compile("coalesce(sqrt([A]), 0)", list(df.columns))
     assert cf.error is None, cf.error
-    out, failed = fe.evaluate(cf, df)
-    assert out.iloc[0] == 0.0 and failed == 0
+    out, report = fe.evaluate(cf, df)
+    assert out.iloc[0] == 0.0 and report.errored == 0 and report.blank == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 1A: Exponent guard + result bounding (#1, #2)
+# ---------------------------------------------------------------------------
+
+def _df(n=3):
+    return pd.DataFrame({"A": [1.0] * n})
+
+
+def test_huge_exponent_does_not_crash_series():
+    cf = fe.compile("10 ** 999999", ["A"])
+    series, report = fe.evaluate(cf, _df())
+    # No OverflowError; offending rows are NaN and counted as errored.
+    assert series.isna().all()
+    assert report.errored == 3
+
+
+def test_large_operand_power_is_rejected_fast():
+    # 999999 exceeds MAX_POWER, so simpleeval refuses it (no multi-second compute).
+    cf = fe.compile("999999 ** 999999", ["A"])
+    series, report = fe.evaluate(cf, _df())
+    assert series.isna().all()
+    assert report.errored == 3
+
+
+def test_normal_power_still_works():
+    cf = fe.compile("[A] ** 2", ["A"])
+    series, report = fe.evaluate(cf, pd.DataFrame({"A": [2.0, 3.0]}))
+    assert series.tolist() == [4.0, 9.0]
+    assert report.errored == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 1B: Whitespace column disambiguation (#5) + reserved-token fix (#6)
+# ---------------------------------------------------------------------------
+
+def test_whitespace_columns_are_disambiguated():
+    df = pd.DataFrame({"A": [10.0], "A ": [20.0]})
+    # exact matches resolve to the right column
+    s_a, _ = fe.evaluate(fe.compile("[A]", ["A", "A "]), df)
+    s_b, _ = fe.evaluate(fe.compile("[A ]", ["A", "A "]), df)
+    assert s_a.tolist() == [10.0]
+    assert s_b.tolist() == [20.0]
+
+
+def test_ambiguous_stripped_reference_errors():
+    cf = fe.compile("[ A ]", ["A", "A "])  # neither exact; strips to 'A' -> ambiguous
+    assert cf.error is not None and "mbiguous" in cf.error
+
+
+def test_column_named_with_double_underscore_c_is_allowed():
+    df = pd.DataFrame({"logP__corrected": [1.5]})
+    cf = fe.compile("[logP__corrected] * 2", ["logP__corrected"])
+    assert cf.error is None
+    series, _ = fe.evaluate(cf, df)
+    assert series.tolist() == [3.0]
+
+
+# ---------------------------------------------------------------------------
+# Task 1C: Separate "blank" vs "errored" rows (#7)
+# ---------------------------------------------------------------------------
+
+def test_eval_report_distinguishes_blank_from_error():
+    df = pd.DataFrame({"A": [1.0, float("nan"), 4.0]})
+    # division by zero is a real error; the NaN row is a blank input
+    cf = fe.compile("1 / ([A] - [A])", ["A"])  # always 1/0 where A present
+    series, report = fe.evaluate(cf, df)
+    assert report.blank == 1     # the NaN-input row
+    assert report.errored == 2   # the two 1/0 rows
+    assert report.first_error is not None

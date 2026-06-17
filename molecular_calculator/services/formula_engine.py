@@ -200,7 +200,9 @@ _BRACKET_RE = re.compile(r"\[([^\[\]]+)\]")
 
 def _resolve_brackets(src: str, columns: list[str]) -> tuple[str, dict[str, str]]:
     """Replace [Column Name] with a safe alias; return (rewritten, alias->name)."""
-    if ALIAS_PREFIX in src:
+    # The reserved alias prefix may appear inside a [Column] reference (a column
+    # legitimately named e.g. 'logP__corrected'); only reject it outside brackets.
+    if ALIAS_PREFIX in _BRACKET_RE.sub("", src):
         raise FormulaError(f"Formula may not contain the reserved token {ALIAS_PREFIX!r}.")
     if len(columns) != len(set(columns)):
         raise FormulaError("Duplicate column names — rename them before using formulas.")
@@ -209,9 +211,21 @@ def _resolve_brackets(src: str, columns: list[str]) -> tuple[str, dict[str, str]
     alias_map: dict[str, str] = {}
 
     def repl(m: re.Match) -> str:
-        name = m.group(1).strip()
-        if name not in colset:
-            raise FormulaError(f"Unknown column: [{name}]")
+        raw = m.group(1)
+        if raw in colset:
+            name = raw  # exact match wins (handles columns that differ only by spaces)
+        else:
+            stripped = raw.strip()
+            candidates = [c for c in columns if c.strip() == stripped]
+            if len(candidates) == 1:
+                name = candidates[0]
+            elif not candidates:
+                raise FormulaError(f"Unknown column: [{raw}]")
+            else:
+                raise FormulaError(
+                    f"Ambiguous column [{raw}] matches multiple columns: "
+                    f"{', '.join(repr(c) for c in candidates)} — reference one exactly."
+                )
         if name not in name_to_alias:
             alias = f"{ALIAS_PREFIX}{len(name_to_alias)}__"
             name_to_alias[name] = alias
@@ -323,6 +337,14 @@ def _wrap_nan_guards(tree: ast.Expression, aliases: set[str]) -> ast.Expression:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class EvalReport:
+    """Per-evaluation row outcome counts for honest UI messaging."""
+    blank: int = 0                       # rows with a missing input value
+    errored: int = 0                     # rows where the formula raised a real error
+    first_error: Optional[str] = None    # first real error message (for surfacing)
+
+
+@dataclass
 class CompiledFormula:
     source: str
     code: str = ""                       # final, unparsed, validated expression
@@ -342,9 +364,11 @@ def compile(formula: str, columns: list[str]) -> CompiledFormula:
     """
     cf = CompiledFormula(source=formula, expected_columns=list(columns))
     try:
-        # Reject any raw formula that contains engine-internal reserved tokens.
+        # Reject engine-internal reserved tokens, but ONLY outside [Column] references
+        # so a column literally named e.g. 'logP__corrected' is still usable.
+        non_bracket = _BRACKET_RE.sub("", formula)
         for reserved in _RESERVED_TOKENS:
-            if reserved in formula:
+            if reserved in non_bracket:
                 cf.error = (
                     f"Formula contains reserved token {reserved!r} — "
                     "use the public DSL functions instead."
@@ -371,7 +395,28 @@ def compile(formula: str, columns: list[str]) -> CompiledFormula:
 # Task 7: evaluate()
 # ---------------------------------------------------------------------------
 
-_se.MAX_POWER = 10 ** 6  # DoS guard for the 1 GB instance
+# Cap operand magnitude so simpleeval refuses expensive powers BEFORE computing
+# them (e.g. 999999 ** 999999). Chemistry formulas never need large exponents.
+_se.MAX_POWER = 1000
+
+# Reject numeric results whose integer magnitude is absurd, so a giant int never
+# reaches pd.Series (which would raise OverflowError on float conversion).
+MAX_RESULT_BITS = 1024
+
+
+def _bounded_numeric(r):
+    """Return r unchanged for safe values; raise FormulaError for oversized/non-finite
+    numbers so the per-row handler turns them into NaN instead of crashing."""
+    if isinstance(r, bool):
+        return r
+    if isinstance(r, int):
+        if r.bit_length() > MAX_RESULT_BITS:
+            raise FormulaError("numeric result too large")
+        return r
+    if isinstance(r, float):
+        if not math.isfinite(r):
+            raise FormulaError("numeric result is not finite")
+    return r
 
 
 def _new_evaluator() -> SimpleEval:
@@ -390,8 +435,8 @@ def _scalar(v):
     return v
 
 
-def evaluate(compiled: CompiledFormula, df: pd.DataFrame) -> tuple[pd.Series, int]:
-    """Evaluate a compiled formula per row. Returns (result Series, failed rows)."""
+def evaluate(compiled: CompiledFormula, df: pd.DataFrame) -> tuple[pd.Series, EvalReport]:
+    """Evaluate a compiled formula per row. Returns (result Series, EvalReport)."""
     if compiled.error:
         raise FormulaError(compiled.error)
     missing = [c for c in compiled.referenced_cols if c not in df.columns]
@@ -399,14 +444,14 @@ def evaluate(compiled: CompiledFormula, df: pd.DataFrame) -> tuple[pd.Series, in
         raise FormulaError(
             f"Column(s) no longer present: {', '.join(missing)} — recompile.")
     if len(df) == 0:
-        return pd.Series([], dtype="float64"), 0
+        return pd.Series([], dtype="float64"), EvalReport()
 
     s = _new_evaluator()
     # alias -> the actual column Series, in row order
     alias_cols = {alias: df[name].to_numpy(dtype=object)
                   for alias, name in compiled.alias_map.items()}
     results = []
-    failed = 0
+    report = EvalReport()
     n = len(df)
     for i in range(n):
         names = {alias: _scalar(col[i]) for alias, col in alias_cols.items()}
@@ -414,11 +459,14 @@ def evaluate(compiled: CompiledFormula, df: pd.DataFrame) -> tuple[pd.Series, in
         s.names = names
         try:
             # compiled.code is the engine-generated, AST-validated string — not raw user input.
-            results.append(s.eval(compiled.code))
+            value = _bounded_numeric(s.eval(compiled.code))
+            results.append(value)
         except _PropagateNaN:
             results.append(float("nan"))
-            failed += 1
-        except Exception:
+            report.blank += 1
+        except Exception as exc:  # real evaluation error (div/0, sqrt(-1), oversized, ...)
             results.append(float("nan"))
-            failed += 1
-    return pd.Series(results, index=df.index), failed
+            report.errored += 1
+            if report.first_error is None:
+                report.first_error = str(exc)
+    return pd.Series(results, index=df.index), report

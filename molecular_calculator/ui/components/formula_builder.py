@@ -46,20 +46,33 @@ def _schema_hash(df: pd.DataFrame) -> str:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _apply_saved_formulas(df: pd.DataFrame, defs: list[dict]) -> pd.DataFrame:
+def _apply_saved_formulas(df: pd.DataFrame, defs: list[dict]) -> tuple[pd.DataFrame, list[str]]:
     """Re-evaluate all saved formula definitions against `df`.
 
-    Formulas that fail to compile or evaluate (e.g. referenced column was
-    removed) are silently skipped so the page remains usable.
+    Applies to a fixed point so order within `defs` does not matter: a formula
+    that references a column produced by a later formula still resolves. Returns
+    (augmented_df, unresolved_names) where unresolved_names never compiled (e.g.
+    a referenced column is genuinely missing) so the caller can surface them
+    instead of silently dropping the column.
     """
     out = df.copy()
-    for d in defs:
-        cf = fe.compile(d["expression"], list(out.columns))
-        if cf.error:
-            continue
-        series, _ = fe.evaluate(cf, out)
-        out[d["name"]] = series
-    return out
+    # Skip malformed entries defensively (import validation should prevent these,
+    # but session state may carry older shapes).
+    remaining = [d for d in defs if isinstance(d, dict) and "name" in d and "expression" in d]
+    progressed = True
+    while remaining and progressed:
+        progressed = False
+        still: list[dict] = []
+        for d in remaining:
+            cf = fe.compile(d["expression"], list(out.columns))
+            if cf.error:
+                still.append(d)
+                continue
+            series, _ = fe.evaluate(cf, out)
+            out[d["name"]] = series
+            progressed = True
+        remaining = still
+    return out, [d["name"] for d in remaining]
 
 
 def _formula_input(default_expr: str, cols: list[str], page_key: str, gen: int = 0) -> str:
@@ -174,7 +187,12 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
     # Apply already-saved formulas up front so their columns are part of `cols`
     # below. That lets the editor's autocomplete, the live preview, and any
     # further formulas reference previously-created columns (formula chaining).
-    df = _apply_saved_formulas(df, st.session_state[defs_key])
+    df, _unresolved_formulas = _apply_saved_formulas(df, st.session_state[defs_key])
+    if _unresolved_formulas:
+        st.warning(
+            "⚠️ These saved formulas could not be applied (a referenced column is "
+            f"missing or the formula errors): {', '.join(_unresolved_formulas)}."
+        )
 
     with st.expander("➕ Custom calculations", expanded=False):
         cols = list(df.columns)
@@ -257,22 +275,30 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
                 st.error(f"⚠️ {cf.error}")
             else:
                 preview_df = df.head(10)
-                series, failed = fe.evaluate(cf, preview_df)
+                series, report = fe.evaluate(cf, preview_df)
                 st.success("✅ Valid")
                 st.caption(
                     "Preview only — this is a draft of the first rows. The column "
                     "is added to your data when you click **Apply column** below."
                 )
                 prev = preview_df.copy()
-                prev[new_name or "result"] = series.values
+                preview_label = new_name or "result"
+                if preview_label in cols:
+                    preview_label = f"{preview_label} (new)"  # don't shadow a source column
+                prev[preview_label] = series.values
                 st.dataframe(
-                    prev[[*cols[:2], new_name or "result"]].head(10),
+                    prev[[*cols[:2], preview_label]].head(10),
                     width='stretch',
                 )
-                if failed:
+                if report.blank:
                     st.caption(
-                        f"{failed} of {len(preview_df)} preview rows blank "
+                        f"{report.blank} of {len(preview_df)} preview rows blank "
                         "(missing values)."
+                    )
+                if report.errored:
+                    st.warning(
+                        f"⚠️ {report.errored} of {len(preview_df)} preview rows could "
+                        f"not be computed (e.g. {report.first_error}). Check the formula."
                     )
 
                 if new_name in cols:
@@ -291,7 +317,19 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
                 # Highlight the button (primary colour) only once it's ready to
                 # apply — a valid formula (we're in the no-error branch) plus a
                 # column name and non-empty data.
-                ready = bool(new_name) and len(df) > 0
+                # Distinguish overwriting a prior COMPUTED column (fine) from
+                # clobbering an original/source data column (dangerous): require an
+                # explicit confirm for the latter.
+                formula_names = {d["name"] for d in st.session_state[defs_key]}
+                overwrites_source = (new_name in cols) and (new_name not in formula_names)
+                confirm_overwrite = True
+                if overwrites_source:
+                    confirm_overwrite = st.checkbox(
+                        f"⚠️ '{new_name}' is an existing data column — overwrite it?",
+                        value=False,
+                        key=f"{page_key}_confirm_overwrite_{gen}",
+                    )
+                ready = bool(new_name) and len(df) > 0 and confirm_overwrite
                 if st.button(
                     "Apply column",
                     key=f"{page_key}_apply",
@@ -354,10 +392,26 @@ def render_formula_builder(df: pd.DataFrame, page_key: str) -> pd.DataFrame:
         if uploaded is not None:
             try:
                 data = json.load(uploaded)
-                st.session_state[defs_key] = data.get("formulas", [])
-                st.rerun()
             except Exception:
-                st.error("Invalid formula JSON.")
+                st.error("Invalid formula JSON (could not parse the file).")
+            else:
+                formulas = data.get("formulas") if isinstance(data, dict) else None
+                valid = isinstance(formulas, list) and all(
+                    isinstance(d, dict)
+                    and isinstance(d.get("name"), str) and d["name"].strip()
+                    and isinstance(d.get("expression"), str) and d["expression"].strip()
+                    for d in formulas
+                )
+                if not valid:
+                    st.error(
+                        'Invalid formula file: expected '
+                        '{"formulas": [{"name": "...", "expression": "..."}]}.'
+                    )
+                else:
+                    st.session_state[defs_key] = [
+                        {"name": d["name"], "expression": d["expression"]} for d in formulas
+                    ]
+                    st.rerun()
 
     # `df` already has the saved formulas applied (done up front for chaining).
     return df
