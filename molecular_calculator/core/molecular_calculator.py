@@ -358,6 +358,44 @@ class MolecularCalculator:
         # Calculate properties
         return self.calculate(conversion_result.smiles)
 
+    @staticmethod
+    def _combine_with_results(
+        original_df: pd.DataFrame,
+        results_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Append calculated-property columns onto the original DataFrame.
+
+        Any calculated column whose name collides with a column already present
+        in ``original_df`` is suffixed with ``" (calculated)"`` so the combined
+        frame never carries duplicate column names. Duplicate names would
+        otherwise raise ``ValueError: Duplicate column names found`` the moment
+        the frame is handed to Streamlit/PyArrow for display (e.g. a user file
+        that already has a ``TPSA`` column plus a calculated ``TPSA``).
+
+        Args:
+            original_df: The user's uploaded DataFrame.
+            results_df: The DataFrame of newly calculated properties.
+
+        Returns:
+            A new DataFrame with both sets of columns and a unique column index.
+        """
+        existing = set(original_df.columns)
+        renames: Dict[str, str] = {}
+        for col in results_df.columns:
+            if col not in existing:
+                continue
+            candidate = f"{col} (calculated)"
+            suffix = 2
+            while candidate in existing or candidate in renames.values():
+                candidate = f"{col} (calculated {suffix})"
+                suffix += 1
+            renames[col] = candidate
+        if renames:
+            results_df = results_df.rename(columns=renames)
+        return pd.concat(
+            [original_df.reset_index(drop=True), results_df], axis=1
+        )
+
     @classmethod
     def process_batch(
         cls,
@@ -431,8 +469,8 @@ class MolecularCalculator:
         # Create results DataFrame
         results_df = pd.DataFrame(results)
 
-        # Combine with original DataFrame
-        final_df = pd.concat([df.reset_index(drop=True), results_df], axis=1)
+        # Combine with original DataFrame (dedup colliding column names)
+        final_df = cls._combine_with_results(df, results_df)
 
         return final_df
 
@@ -531,8 +569,8 @@ class MolecularCalculator:
         # Create results DataFrame
         results_df = pd.DataFrame(results)
 
-        # Combine with original DataFrame
-        final_df = pd.concat([df.reset_index(drop=True), results_df], axis=1)
+        # Combine with original DataFrame (dedup colliding column names)
+        final_df = cls._combine_with_results(df, results_df)
 
         return final_df
 
