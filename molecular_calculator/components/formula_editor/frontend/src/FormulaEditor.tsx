@@ -4,7 +4,14 @@ import {
   StreamlitComponentBase,
   withStreamlitConnection,
 } from "streamlit-component-lib";
-import Editor, { Monaco } from "@monaco-editor/react";
+import Editor, { Monaco, loader } from "@monaco-editor/react";
+
+// Pin Monaco core to the version in package.json so the runtime (CDN) version
+// can't drift from the build. (Finding #15.) For fully offline/air-gapped use,
+// replace this URL with a locally-bundled vs path. (Finding #11.)
+loader.config({
+  paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs" },
+});
 
 /**
  * Monaco-based formula editor for Streamlit.

@@ -8,6 +8,17 @@ run ``npm build``).
 Dev mode: set ``FORMULA_EDITOR_DEV=1`` and run the Vite dev server
 (``npm run dev`` in ``frontend/``, default http://localhost:5173``) for hot reload.
 Release mode (default): serves the committed ``frontend/build`` directory.
+
+Runtime CDN dependency (Finding #11):
+    The editor fetches Monaco core at runtime from jsDelivr
+    (``https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs``); the version
+    is pinned in ``frontend/src/FormulaEditor.tsx`` via ``loader.config(...)`` so
+    it cannot drift from the build. This means the component requires outbound
+    network access to jsdelivr.net at first render. Offline, air-gapped, or
+    strict-CSP deployments must bundle Monaco locally and replace the
+    ``loader.config`` ``vs`` path with a path to that local asset. If the
+    component fails to mount (e.g. CDN blocked), the ``st.text_area`` fallback in
+    ``formula_builder._formula_input`` already covers plain-text formula entry.
 """
 from __future__ import annotations
 
