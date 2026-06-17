@@ -76,3 +76,18 @@ def test_bom_export_round_trips_and_strips_bom():
     # Re-importing our own export strips the BOM (no '﻿SMILES' column).
     back = read_csv_robust(BytesIO(exported))
     assert list(back.columns) == ["SMILES", "MIC min (µM)"]
+
+
+def test_utf16_csv_is_read_correctly_not_as_garbage():
+    raw = "SMILES,val\nCCO,1\nc1ccccc1,2\n".encode("utf-16")  # has BOM 0xFF 0xFE
+    df = read_csv_robust(BytesIO(raw))
+    assert list(df.columns) == ["SMILES", "val"]
+    assert df["SMILES"].tolist() == ["CCO", "c1ccccc1"]
+
+
+def test_nul_bytes_in_decoded_header_raise_clear_error():
+    # UTF-16 content WITHOUT a usable BOM, forced through latin-1, contains NULs.
+    raw = "A,B\n1,2\n".encode("utf-16-le")  # no BOM
+    with pytest.raises(Exception) as exc:
+        read_csv_robust(BytesIO(raw))
+    assert "encod" in str(exc.value).lower()

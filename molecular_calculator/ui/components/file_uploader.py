@@ -29,32 +29,59 @@ CSV_ENCODINGS = ('utf-8-sig', 'cp1252', 'latin-1')
 def read_csv_robust(file_like, **kwargs) -> pd.DataFrame:
     """Read a CSV, retrying across common encodings on decode failure.
 
-    A plain ``pd.read_csv`` defaults to UTF-8 and raises ``UnicodeDecodeError``
-    on files saved as Windows-1252/Latin-1 (e.g. a ``Potency µM`` header, where
-    ``µ`` is byte 0xb5). This tries UTF-8 first and falls back to legacy
-    encodings, rewinding the stream between attempts.
-
-    Only ``UnicodeDecodeError`` triggers a fallback - a genuinely malformed CSV
-    still raises its real parser error so the caller can surface it.
-
-    Args:
-        file_like: A file path or file-like object (e.g. Streamlit UploadedFile).
-        **kwargs: Passed through to ``pd.read_csv``.
-
-    Returns:
-        Parsed DataFrame.
+    Tries UTF-8 first and falls back to legacy encodings (cp1252, latin-1),
+    rewinding the stream between attempts. Detects a UTF-16/32 BOM up front so
+    those files are decoded correctly instead of loading as latin-1 garbage, and
+    rejects results that still look mis-encoded (NUL bytes in the header).
     """
-    last_error: Optional[UnicodeDecodeError] = None
-    for encoding in CSV_ENCODINGS:
+    encodings = list(CSV_ENCODINGS)
+
+    # Peek at the leading bytes to detect a UTF-16/32 byte-order mark.
+    head = b""
+    if hasattr(file_like, "read") and hasattr(file_like, "seek"):
+        file_like.seek(0)
+        head = file_like.read(64)
+        file_like.seek(0)
+        if isinstance(head, str):  # text-mode handle; BOM sniff not applicable
+            head = b""
+    else:
         try:
-            if hasattr(file_like, 'seek'):
+            with open(file_like, "rb") as fh:
+                head = fh.read(64)
+        except (TypeError, OSError):
+            head = b""
+    if head[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        encodings = ["utf-16"] + encodings
+    elif head[:4] in (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"):
+        encodings = ["utf-32"] + encodings
+    elif b"\x00" in head:
+        # No usable BOM but the raw byte stream is littered with NUL bytes — the
+        # hallmark of UTF-16/32 text forced through a single-byte encoding. The
+        # C parser silently truncates fields at NUL, so this never surfaces as a
+        # column-name signal below; reject up front instead of returning garbage.
+        raise ValueError(
+            "File appears to be in an unsupported encoding (looks like UTF-16). "
+            "Re-save it as UTF-8 or CSV (Comma delimited)."
+        )
+
+    last_error: Optional[Exception] = None
+    for encoding in encodings:
+        try:
+            if hasattr(file_like, "seek"):
                 file_like.seek(0)
-            return pd.read_csv(file_like, encoding=encoding, **kwargs)
+            df = pd.read_csv(file_like, encoding=encoding, **kwargs)
         except UnicodeDecodeError as e:
             last_error = e
             continue
-    # latin-1 cannot raise UnicodeDecodeError, so this is effectively
-    # unreachable; re-raise defensively if every attempt somehow failed.
+        # A successful latin-1/cp1252 decode of a UTF-16 file yields NUL bytes in
+        # the column names — a reliable mojibake signal. Reject rather than return garbage.
+        if any("\x00" in str(c) for c in df.columns):
+            last_error = ValueError(
+                "File appears to be in an unsupported encoding (looks like UTF-16). "
+                "Re-save it as UTF-8 or CSV (Comma delimited)."
+            )
+            continue
+        return df
     raise last_error
 
 
