@@ -37,7 +37,6 @@ from molecular_calculator.ui.pages import (
     render_single_molecule_page,
     render_batch_processing_page,
     render_3d_regression_page,
-    render_3d_regression_help,
     render_gmm_page,
 )
 

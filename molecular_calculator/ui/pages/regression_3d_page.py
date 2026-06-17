@@ -40,6 +40,7 @@ from molecular_calculator.ui.components.plotly_3d_utils import (
 
 # Robust CSV reader (handles non-UTF-8 exports from Excel/Windows tools)
 from molecular_calculator.ui.components.file_uploader import read_csv_robust
+from molecular_calculator.utils.validators import FileValidator, DataFrameValidator
 
 
 # ============================================================================
@@ -329,6 +330,8 @@ def render_3d_regression_page():
     st.markdown("Perform 3D Ordinary Least Squares regression: **Z = b_0 + b_1*X + b_2*Y**")
     st.markdown("Perfect for SAR (Structure-Activity Relationship) analysis and multi-variate modeling")
 
+    render_3d_regression_help()
+
     # File upload
     reg_file = st.file_uploader(
         "Upload CSV file with your data", type=['csv'],
@@ -337,10 +340,18 @@ def render_3d_regression_page():
     )
 
     if reg_file is not None:
+        fres = FileValidator.validate_upload(reg_file)
+        if not fres.is_valid:
+            st.error(f"❌ {fres.errors[0] if fres.errors else 'Invalid file'}")
+            st.stop()
         try:
             reg_df = read_csv_robust(reg_file)
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
+            st.stop()
+        dres = DataFrameValidator.validate(reg_df)
+        if not dres.is_valid:
+            st.error(f"❌ {dres.errors[0]}")
             st.stop()
 
         # Data preprocessing - convert numeric-like strings to numbers
